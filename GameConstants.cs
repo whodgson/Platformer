@@ -10,6 +10,7 @@ namespace Assets.script
     {
         public const string TAG_PLAYER = "Player";
         public const string TAG_WATER =  "water";
+        public const string TAG_PLAYER_CAMERA_TARGET = "player_camera_target";
         public const string TAG_MAIN_CAMERA = "MainCamera";
 
         public const string COLLIDER_TYPE_DEFAULT = "c_default";
@@ -17,6 +18,7 @@ namespace Assets.script
         public const string COLLIDER_TYPE_STONE = "c_stone";
         public const string COLLIDER_TYPE_SAND = "c_sand";
         public const string COLLIDER_TYPE_GRASS = "c_grass";
+        public const string COLLIDER_TYPE_WOOD = "c_wood";
     }
 
     

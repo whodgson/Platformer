@@ -45,6 +45,9 @@ public class ActorFootstepController : MonoBehaviour
     AudioClip audio_step_grass_1;
     AudioClip audio_step_grass_2;
 
+    AudioClip audio_step_wood_1;
+    AudioClip audio_step_wood_2;
+
     AudioSource audio_source;
 
     // collection variables.
@@ -70,11 +73,14 @@ public class ActorFootstepController : MonoBehaviour
         audio_step_grass_1 = Resources.Load("sound/sfx_step_grass_1") as AudioClip;
         audio_step_grass_2 = Resources.Load("sound/sfx_step_grass_2") as AudioClip;
 
+        audio_step_wood_1 = Resources.Load("sound/sfx_step_wood_1") as AudioClip;
+        audio_step_wood_2 = Resources.Load("sound/sfx_step_wood_2") as AudioClip;
+
         audio_source = gameObject.AddComponent<AudioSource>();
         audio_source.clip = audio_step_sand_1;
         audio_source.loop = false;
         audio_source.playOnAwake = false;
-        audio_source.volume = 1.0f;
+        audio_source.volume = 0.375f;
 
         audio_library = new Dictionary<(string,int), AudioClip>();
 
@@ -84,7 +90,6 @@ public class ActorFootstepController : MonoBehaviour
         audio_library.Add((GameConstants.COLLIDER_TYPE_WATER, 1), audio_step_water_1);
         audio_library.Add((GameConstants.COLLIDER_TYPE_WATER, 2), audio_step_water_2);
 
-
         audio_library.Add((GameConstants.COLLIDER_TYPE_GRASS, 1), audio_step_grass_1);
         audio_library.Add((GameConstants.COLLIDER_TYPE_GRASS, 2), audio_step_grass_2);
 
@@ -93,6 +98,9 @@ public class ActorFootstepController : MonoBehaviour
 
         audio_library.Add((GameConstants.COLLIDER_TYPE_STONE, 1), audio_step_stone_1);
         audio_library.Add((GameConstants.COLLIDER_TYPE_STONE, 2), audio_step_stone_2);
+
+        audio_library.Add((GameConstants.COLLIDER_TYPE_WOOD, 1), audio_step_wood_1);
+        audio_library.Add((GameConstants.COLLIDER_TYPE_WOOD, 2), audio_step_wood_2);
     }
 
     private void FixedUpdate()

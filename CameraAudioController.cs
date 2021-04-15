@@ -13,6 +13,7 @@ public class CameraAudioController : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        manager_game_object = GameObject.FindGameObjectWithTag(GameConstants.TAG_PLAYER);
         manager = manager_game_object.GetComponent<ICameraAudioManager>();
 
         audio_low_pass_filter = gameObject.AddComponent<AudioLowPassFilter>();

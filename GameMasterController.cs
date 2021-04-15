@@ -15,12 +15,8 @@ public enum GameState
 public class GameMasterController : MonoBehaviour
 {
     public GameState game_state;
-    public GameSceneTransitionController scene_transition_controller;
-
-    bool is_load_scene = false;
-    string load_scene = string.Empty;
-    string load_player_start_gameobject = string.Empty;
-    string load_camera_start_gameobject = string.Empty;
+    public GameLoadLevelController load_level_controller;
+    public GameInputController input_controller;
 
     // prefabs.
 
@@ -30,13 +26,13 @@ public class GameMasterController : MonoBehaviour
     private void Awake()
     {
         DontDestroyOnLoad(this.gameObject);
-    }
 
-    void Start()
-    {
+        Cursor.lockState = CursorLockMode.Locked;
+
         game_state = GameState.MainMenu;
 
-        scene_transition_controller = this.gameObject.AddComponent<GameSceneTransitionController>();
+        load_level_controller = this.gameObject.AddComponent<GameLoadLevelController>();
+        input_controller = this.gameObject.GetComponent<GameInputController>();
     }
 
     public void ChangeState(GameState new_game_state)

@@ -1,14 +1,16 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Assets.script;
 
 public class CameraController : MonoBehaviour
 {
     const float Y_MIN = -20;
     const float Y_MAX =  60;
 
-    const float X_SPEED = 2;
-    const float Y_SPEED = 2;
+    const float X_SPEED = 1f;
+    const float Y_SPEED = 1f;
+    const float ZOOM_SPEED = 1f;
 
     const float CAMERA_CLIPPING_RADIUS = 0.05f;
 
@@ -33,18 +35,25 @@ public class CameraController : MonoBehaviour
 
     const float FIXED_TRANSITION_STEP = 2f;
 
-    // Start is called before the first frame update
+    // game variables.
+
+    GameMasterController master;
+
     void Start()
     {
+        master = GameObject.FindObjectOfType<GameMasterController>();
+
         fixed_start_position = this.transform.position;
         fixed_start_rotation = this.transform.rotation;
 
         fixed_transform = this.transform;
         fixed_transition = 1.0f;
 
+        // set to default target (player).
+
+        target = GameObject.FindGameObjectWithTag(GameConstants.TAG_PLAYER_CAMERA_TARGET).transform;
     }
 
-    // Update is called once per frame
     void Update()
     {
         if (is_fixed)
@@ -81,12 +90,16 @@ public class CameraController : MonoBehaviour
     {
         // Get x and y offset from input.
 
-        x -= Input.GetAxis("Mouse X") * X_SPEED;
-        y += Input.GetAxis("Mouse Y") * Y_SPEED;
+        x += master.input_controller.action_aim_horizontal.ReadValue<float>() * (X_SPEED 
+            * master.input_controller.sensitivity_camera_horizontal);
+
+        y -= master.input_controller.action_aim_vertical.ReadValue<float>() * (Y_SPEED 
+            * master.input_controller.sensitivity_camera_vertical);
 
         // Get max distance from input.
 
-        target_distance += Input.GetAxis("Mouse ScrollWheel");
+        target_distance += master.input_controller.action_aim_zoom.ReadValue<float>() 
+            * (ZOOM_SPEED * master.input_controller.sensitivity_camera_zoom);
 
         if (target_distance > MAX_DISTANCE_MAX) target_distance = MAX_DISTANCE_MAX;
         if (target_distance < MAX_DISTANCE_MIN) target_distance = MAX_DISTANCE_MIN;

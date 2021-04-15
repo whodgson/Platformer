@@ -17,7 +17,7 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     const float DRAG_GROUNDED = 5f;
     const float DRAG_AIR = 0f;
 
-    const float MAX_SPEED = 3.0f;
+    const float MAX_GROUND_SPEED = 3.0f;
     const float MAX_WATER_SPEED = 2.0f;
 
     // collision constants.
@@ -52,6 +52,10 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     const float WATER_PARTIAL_SUBMERGED_OFFSET = 0.0f;
     const float WATER_FULL_SUBMERGED_OFFSET = 0.1875f;
 
+    // attack constants.
+
+    const float ATTACK_TIMER_INCREMENT = 0.07f;
+
     // Debug constants.
 
     private readonly Rect DEBUG_RECTANGLE = new Rect(10, 10, 640, 480);
@@ -60,14 +64,17 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     // physics variables.
 
     float movement_slope_similarity = 0.0f;
+    float max_speed = 0.0f;
 
     // input variables.
 
     Vector3 input_movement = new Vector3(0, 0, 0);
     bool is_input_movement = false;
     bool is_input_jumping = false;
+    bool is_input_attack = false;
 
     bool was_input_jumping = false;
+    bool was_input_attack = false;
 
     // collision variables.
 
@@ -106,6 +113,7 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     AudioClip audio_p_jump;
     AudioClip audio_p_slide;
+    AudioClip audio_p_attack;
 
     // water variables.
 
@@ -114,20 +122,30 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     bool is_partial_submerged = false;
     bool is_full_submerged = false;
 
+    // attack variables.
+
+    bool is_attack = false;
+    float attack_timer = 0.0f;
+
+    // game variables.
+
+    GameMasterController master;
 
     void Start()
     {
-        Cursor.lockState = CursorLockMode.Locked;
+        master = GameObject.FindObjectOfType<GameMasterController>();
 
         p_rigid_body = GetComponent<Rigidbody>();
         p_sphere_collider = GetComponent<SphereCollider>();
         p_render = this.transform.Find("player_render");
         p_animator = GetComponent<Animator>();
+        p_camera = GameObject.FindGameObjectWithTag(GameConstants.TAG_MAIN_CAMERA);
 
         // load audio.
 
         audio_p_jump = Resources.Load("sound/sfx_p_jump") as AudioClip;
         audio_p_slide = Resources.Load("sound/sfx_p_slide") as AudioClip;
+        audio_p_attack = Resources.Load("sound/sfx_p_attack") as AudioClip;
     }
 
     
@@ -147,36 +165,24 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
         UpdatePlayerWater();
         UpdatePlayerJumping();
         UpdatePlayerSwimming();
+        UpdatePlayerAttack();
 
         UpdatePlayerMovementSpeed();
 
-        UpdatePlayerFacingDirection();   
-
+        UpdatePlayerFacingDirection();
+        
         UpdatePlayerAnimationValues();
     }
 
     private void Update()
     {
-        if(Input.GetKeyDown(KeyCode.P))
-        {
-            p_rigid_body.isKinematic = true;
-            p_rigid_body.detectCollisions = false;
-        }
-        if (Input.GetKeyDown(KeyCode.O))
-        {
-            p_rigid_body.isKinematic = false;
-            p_rigid_body.detectCollisions = true;
-        }
-        if(Input.GetKeyDown(KeyCode.R))
-        {
-            this.transform.position = new Vector3(0, 10, 0);
-        }
+
     }
 
     private void UpdatePlayerInput()
     {
-        float input_horizontal = Input.GetAxis("Horizontal");
-        float input_vertical = Input.GetAxis("Vertical");
+        float input_horizontal = master.input_controller.action_horizontal.ReadValue<float>();
+        float input_vertical = master.input_controller.action_vertical.ReadValue<float>();
 
         Vector3 input = new Vector3(input_horizontal, 0.0f, input_vertical);
 
@@ -185,7 +191,10 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
         input_movement = input;
         is_input_movement = (input_movement.magnitude > INPUT_MOVEMENT_THRESHOLD);
-        is_input_jumping = Input.GetButton("Jump");
+
+        is_input_jumping = master.input_controller.action_positive.ReadValue<float>() > 0.5f;
+
+        is_input_attack = master.input_controller.action_interact.ReadValue<float>() > 0.5f;
     }
 
     private void UpdatePlayerIsGroundedSphere()
@@ -273,6 +282,9 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     private void UpdatePlayerMovement()
     {
+        if (is_attack)
+            return;
+
         // get the input vector with respect to the camera.
 
         var movement = Quaternion.Euler(0, p_camera.transform.eulerAngles.y, 0) * input_movement;
@@ -451,13 +463,50 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
         }
     }
 
+    private void UpdatePlayerAttack()
+    {
+        // exit attack if not in valid state.
+        if(is_full_submerged)
+        {
+            is_attack = false;
+            attack_timer = 0.0f;
+        }
+
+        // begin attack if in a valid state and not already attacking.
+        if (is_input_attack && !was_input_attack && !is_attack && !is_full_submerged)
+        {
+            is_attack = true;
+            attack_timer = 0.0f;
+
+            // Play the attack sound.
+
+            AudioSource.PlayClipAtPoint(audio_p_attack, this.transform.position);
+        }
+
+        // if attacking, run attack timer to complete attack.
+
+        if(is_attack)
+        {
+            attack_timer += ATTACK_TIMER_INCREMENT;
+
+            if (attack_timer >= 1)
+                is_attack = false;
+        }
+
+        // update the was-attacking flag, for edge detection.
+
+        was_input_attack = is_input_attack;
+    }
+
     private void UpdatePlayerMovementSpeed()
     {
-        if(is_partial_submerged)
+        max_speed = (is_partial_submerged) ? MAX_WATER_SPEED : MAX_GROUND_SPEED;
+
+        if (is_partial_submerged)
         {
-            if (p_rigid_body.velocity.magnitude > MAX_WATER_SPEED)
+            if (p_rigid_body.velocity.magnitude > max_speed)
             {
-                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, MAX_WATER_SPEED);
+                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, max_speed);
             }
 
             return;
@@ -465,9 +514,9 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
         if (is_grounded_sphere)
         {
-            if (p_rigid_body.velocity.magnitude > MAX_SPEED)
+            if (p_rigid_body.velocity.magnitude > max_speed)
             {
-                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, MAX_SPEED);
+                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, max_speed);
             }
         }
         else
@@ -475,10 +524,10 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
             Vector3 old_x_z = new Vector3(p_rigid_body.velocity.x, 0, p_rigid_body.velocity.z);
             Vector3 old_y = new Vector3(0,p_rigid_body.velocity.y,0);
 
-            if(old_x_z.magnitude > MAX_SPEED)
+            if(old_x_z.magnitude > max_speed)
             {
                 
-                old_x_z = Vector3.ClampMagnitude(old_x_z, MAX_SPEED);
+                old_x_z = Vector3.ClampMagnitude(old_x_z, max_speed);
                 p_rigid_body.velocity = old_x_z + old_y;
             }
         }
@@ -486,13 +535,18 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     private void UpdatePlayerFacingDirection()
     {
+        // don't update rotation if in not in a valid state.
+
+        if ((!is_grounded_sphere && !is_full_submerged)
+            || (is_attack))
+            return;
+
         var movement = Quaternion.Euler(0, p_camera.transform.eulerAngles.y, 0) * input_movement;
 
         Vector3 new_direction = Vector3.RotateTowards(p_render.forward, movement, ANIM_SPEED_FACING_ROTATION, 0.0f);
 
         // Move our position a step closer to the target.
-        if(is_grounded_sphere || is_full_submerged)
-            p_render.rotation = Quaternion.LookRotation(new_direction);
+        p_render.rotation = Quaternion.LookRotation(new_direction);
     }
 
     
@@ -505,7 +559,9 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
         p_animator.SetBool("anim_is_rising", p_rigid_body.velocity.y > 0);
         p_animator.SetBool("anim_is_sliding", is_sliding);
         p_animator.SetBool("anim_is_full_submerged", is_full_submerged);
+        p_animator.SetBool("anim_is_attack", is_attack);
         p_animator.SetFloat("anim_moving_speed", p_rigid_body.velocity.magnitude);
+        
     }
 
     // Trigger behaviour.
@@ -534,6 +590,15 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     public (bool, string, float, bool, bool) UpdateFootstepController()
     {
+        if (is_attack)
+        {
+            return (false,
+                grounded_type,
+                p_rigid_body.velocity.magnitude,
+                is_in_water,
+                is_partial_submerged);
+        }
+
         return (is_grounded_ray, 
             grounded_type, 
             p_rigid_body.velocity.magnitude, 

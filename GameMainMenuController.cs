@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class GameMainMenuController : MonoBehaviour
 {
@@ -10,14 +11,19 @@ public class GameMainMenuController : MonoBehaviour
     void Start()
     {
         master = GameObject.FindObjectOfType<GameMasterController>();
+        master.input_controller.action_start.performed += LoadTestScene;
     }
 
     // Update is called once per frame
     void Update()
     {
-        if(Input.GetKeyDown(KeyCode.A))
-        {
-            //master.BeginLoadLevel("scene_test_1", "player_start_1", "camera_start_1");
-        }
+        
+
+    }
+
+    private void LoadTestScene(InputAction.CallbackContext context)
+    {
+        Debug.Log("Loading Test Scene");
+        master.load_level_controller.StartLoadLevel("scene_test_1", "player_start_1", "camera_start_1");
     }
 }
