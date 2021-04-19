@@ -17,6 +17,7 @@ public class GameMasterController : MonoBehaviour
     public GameState game_state;
     public GameLoadLevelController load_level_controller;
     public GameInputController input_controller;
+    public GameAudioController audio_controller;
 
     // prefabs.
 
@@ -33,10 +34,16 @@ public class GameMasterController : MonoBehaviour
 
         load_level_controller = this.gameObject.AddComponent<GameLoadLevelController>();
         input_controller = this.gameObject.GetComponent<GameInputController>();
+        audio_controller = this.gameObject.GetComponent<GameAudioController>();
     }
 
     public void ChangeState(GameState new_game_state)
     {
         game_state = new_game_state;
+    }
+
+    public static GameMasterController GetMasterController()
+    {
+        return GameObject.FindObjectOfType<GameMasterController>();
     }
 }

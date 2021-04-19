@@ -20,7 +20,7 @@ public class MapLoadLevelTrigger : MonoBehaviour
     {
         if (other.tag == GameConstants.TAG_PLAYER)
         {
-            //master_controller.BeginLoadLevel(scene, player_start_transform, camera_start_transform);
+            master_controller.load_level_controller.StartLoadLevel(scene, player_start_transform, camera_start_transform);
         }
     }
 }

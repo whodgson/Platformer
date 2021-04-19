@@ -21,8 +21,8 @@ public class GameInputController : MonoBehaviour
     public InputAction action_aim_zoom;
 
     public float sensitivity_camera_zoom = 0.05f;
-    public float sensitivity_camera_horizontal = 1f;
-    public float sensitivity_camera_vertical = 1f;
+    public float sensitivity_camera_horizontal = 0.7f;
+    public float sensitivity_camera_vertical = 0.7f;
 
     void Awake()
     {

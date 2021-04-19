@@ -19,6 +19,12 @@ namespace Assets.script
         public const string COLLIDER_TYPE_SAND = "c_sand";
         public const string COLLIDER_TYPE_GRASS = "c_grass";
         public const string COLLIDER_TYPE_WOOD = "c_wood";
+
+        public enum ActorTag
+        {
+            actor_default,
+            actor_can_press_switch
+        }
     }
 
     
