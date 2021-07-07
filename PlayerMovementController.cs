@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using UnityEngine;
 using Assets.script;
 
-public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, ICameraAudioManager
+public class PlayerMovementController : MonoBehaviour
+    ,IActorFootstepManager
+    , ICameraAudioManager
+    , IActorSplashManager
 {
     // input constants.
 
@@ -15,6 +18,7 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     const float ACCEL_AIR = 0.2f;
 
     const float DRAG_GROUNDED = 5f;
+    const float DRAG_SLIDING = 1f;
     const float DRAG_AIR = 0f;
 
     const float MAX_GROUND_SPEED = 3.0f;
@@ -23,15 +27,36 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     // collision constants.
 
     const float SPHERECAST_RADIUS = 0.18f;
-    const float SPHERECAST_RAY_DISTANCE = 0.05f;
+    const float SPHERECAST_RAY_DISTANCE = 100f;
 
-    const float RAY_COLLIDER_RAY_DISTANCE = 0.25f;
+    const float RAY_COLLIDER_RAY_DISTANCE = 100f;
+
+    const float GROUNDED_RAY_MAX_DISTANCE = 0.3f;
+    const float GROUNDED_SPHERE_MAX_DISTANCE = 0.02f;
+
+
+    const float STEP_OFFSET_DISTANCE = 0.05f;
 
     // sliding contstants.
 
-    const float SLIDE_ANGLE_MIN = 50f;
-    const float SLIDE_ANGLE_MAX = 85f;
-    const float SLIDE_FORCE_MIN = 4f;
+    const float SLIDING_FORCE_ANGLE_MIN = 3f;
+    const float SLIDING_ANGLE_MAX_FOR_RECOVERY = 30f;
+    const float SLIDING_ANGLE_MIN = 50f;
+    const float SLIDING_ANGLE_MAX = 85f;
+
+    const float SLIDING_FORCE_MINIMUM = 4f;
+    const float SLIDING_FORCE_MAXIMUM = 16f;
+    const float SLIDING_FORCE_MINIMUM_CHANGE = 0.05f;
+
+    const float SLIDING_FORCE_SLOPE_ANGLE_MULTIPLIER = 0.001f;
+
+    const float SLIDING_RESISTANCE_MAX = 1.0f;
+    const float SLIDING_RESISTANCE_MINIMUM_CHANGE = 0.01f;
+    const float SLIDING_RESISTANCE_SLOPE_ANGLE_MULTIPLIER = 0.01f;
+
+    const float SLIDING_MAX_RECOVERY_SPEED = 1.0f;
+
+    const float SLIDING_MOVEMENT_FORCE_MULTIPLIER = 0.25f;
 
     // jumping constants.
 
@@ -58,13 +83,12 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     // Debug constants.
 
-    private readonly Rect DEBUG_RECTANGLE = new Rect(10, 10, 640, 480);
-    private readonly Rect DEBUG_RECTANGLE_BACK = new Rect(12, 12, 640, 480);
+    private readonly Rect DEBUG_RECTANGLE = new Rect(0, 64, 640, 480);
 
     // physics variables.
 
-    float movement_slope_similarity = 0.0f;
-    float max_speed = 0.0f;
+    float movement_upward_slope_similarity = 0.0f;
+    float movement_downward_slope_similarity = 0.0f;
 
     // input variables.
 
@@ -81,6 +105,12 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     private bool is_grounded_sphere = false;
     private bool is_grounded_ray = false;
 
+    private bool is_sphere_hit = false;
+    private bool is_ray_hit = false;
+
+    RaycastHit ray_hit_info;
+    RaycastHit sphere_hit_info;
+
     private float grounded_slope_angle = 0.0f;
     private Vector3 grounded_slope_normal = Vector3.up;
     private Vector3 grounded_slope_direction = Vector3.up;
@@ -92,8 +122,11 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     // sliding variables.
 
+    private bool was_sliding = false;
     private bool is_sliding = false;
     private float sliding_force = 0.0f;
+    private float sliding_resistance;
+    private Vector3 sliding_direction;
 
     // jumping variables.
 
@@ -127,6 +160,11 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     bool is_attack = false;
     float attack_timer = 0.0f;
 
+    // facing variables.
+
+    Vector3 facing_direction;
+    Vector3 facing_direction_delta;
+
     // game variables.
 
     GameMasterController master;
@@ -146,6 +184,15 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
         audio_p_jump = Resources.Load("sound/sfx_p_jump") as AudioClip;
         audio_p_slide = Resources.Load("sound/sfx_p_slide") as AudioClip;
         audio_p_attack = Resources.Load("sound/sfx_p_attack") as AudioClip;
+
+        // init variables.
+
+        sliding_resistance = SLIDING_RESISTANCE_MAX;
+        sliding_direction = Vector3.up;
+
+        facing_direction = Vector3.up;
+        facing_direction_delta = Vector3.up;
+
     }
 
     
@@ -174,11 +221,6 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
         UpdatePlayerAnimationValues();
     }
 
-    private void Update()
-    {
-
-    }
-
     private void UpdatePlayerInput()
     {
         float input_horizontal = master.input_controller.action_horizontal.ReadValue<float>();
@@ -201,22 +243,21 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     {
         // General grounded check.
 
-        RaycastHit hit_info;
-        is_grounded_sphere = Physics.SphereCast(this.transform.position, SPHERECAST_RADIUS, Vector3.down, out hit_info, SPHERECAST_RAY_DISTANCE);
+        is_sphere_hit = Physics.SphereCast(this.transform.position, SPHERECAST_RADIUS, Vector3.down, out sphere_hit_info, SPHERECAST_RAY_DISTANCE);
 
-        if(is_grounded_sphere)
+        if(is_sphere_hit)
         {
-            // set the angle of the surface.
-            grounded_slope_angle = Vector3.Angle(hit_info.normal, Vector3.up);
+            // set grounded, if under max distance.
+            is_grounded_sphere = sphere_hit_info.distance <= GROUNDED_SPHERE_MAX_DISTANCE;
 
             // set the slope normal.
-            grounded_slope_normal = hit_info.normal;
+            grounded_slope_normal = sphere_hit_info.normal;
 
             // set the ground slope direction.
-            var temp = Vector3.Cross(hit_info.normal, Vector3.down);
-            grounded_slope_direction = Vector3.Cross(temp, hit_info.normal);
+            var temp = Vector3.Cross(sphere_hit_info.normal, Vector3.down);
+            grounded_slope_direction = Vector3.Cross(temp, sphere_hit_info.normal);
 
-            grounded_type = hit_info.collider?.sharedMaterial?.name 
+            grounded_type = sphere_hit_info.collider?.sharedMaterial?.name 
                 ?? GameConstants.COLLIDER_TYPE_DEFAULT;
         }
         else
@@ -230,20 +271,22 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     {
         // Specific triangle grounded check.
 
-        RaycastHit hit_info;
-        is_grounded_ray = Physics.Raycast(this.transform.position, Vector3.down, out hit_info, RAY_COLLIDER_RAY_DISTANCE);
+        is_ray_hit = Physics.Raycast(this.transform.position, Vector3.down, out ray_hit_info, RAY_COLLIDER_RAY_DISTANCE);
 
-        if(is_grounded_ray)
+        if(is_ray_hit)
         {
+            // set grounded, if under max distance.
+            is_grounded_ray = ray_hit_info.distance <= GROUNDED_RAY_MAX_DISTANCE;
+
             // set the angle of the surface.
-            grounded_slope_angle = Vector3.Angle(hit_info.normal, Vector3.up);
+            grounded_slope_angle = Vector3.Angle(ray_hit_info.normal, Vector3.up);
 
             // set the slope normal.
-            grounded_slope_normal = hit_info.normal;
+            grounded_slope_normal = ray_hit_info.normal;
 
             // set the ground slope direction.
-            var temp = Vector3.Cross(hit_info.normal, Vector3.down);
-            grounded_slope_direction = Vector3.Cross(temp, hit_info.normal);
+            var temp = Vector3.Cross(ray_hit_info.normal, Vector3.down);
+            grounded_slope_direction = Vector3.Cross(temp, ray_hit_info.normal);
         }
     }
 
@@ -265,8 +308,8 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
         if (!is_input_movement && is_grounded_ray && !is_sliding)
         {
-            p_sphere_collider.material.dynamicFriction = 100f;
-            p_sphere_collider.material.staticFriction = 100f;
+            p_sphere_collider.material.dynamicFriction = 100; // 100
+            p_sphere_collider.material.staticFriction = 100; // 100
         }
         else
         {
@@ -277,7 +320,17 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     private void UpdatePlayerDrag()
     {
-        p_rigid_body.drag = is_grounded_sphere ? DRAG_GROUNDED : DRAG_AIR;
+        if (is_grounded_ray)
+        {
+            if(is_sliding)
+                p_rigid_body.drag = DRAG_SLIDING;
+            else
+                p_rigid_body.drag = DRAG_GROUNDED;
+        }
+        else
+        {
+            p_rigid_body.drag = DRAG_AIR;
+        }
     }
 
     private void UpdatePlayerMovement()
@@ -299,15 +352,23 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
         var force = slope_movement * acceleration;
 
+        // Update the slope similarity.
+        // Similarity is determined by the dot products of the normalised vectors.
+
+        movement_upward_slope_similarity = Vector3.Dot(-grounded_slope_direction.normalized, slope_movement.normalized);
+        movement_upward_slope_similarity = Mathf.Min(1, movement_upward_slope_similarity);
+        movement_upward_slope_similarity = Mathf.Max(0, movement_upward_slope_similarity);
+
+        movement_downward_slope_similarity = Vector3.Dot(grounded_slope_direction.normalized, slope_movement.normalized);
+        movement_downward_slope_similarity = Mathf.Min(1, movement_downward_slope_similarity);
+        movement_downward_slope_similarity = Mathf.Max(0, movement_downward_slope_similarity);
+
         // If sliding and grounded, multiply the 
         // force by the movement vs. slope similarity.
 
-        if(is_sliding && is_grounded_sphere)
+        if (is_sliding && is_grounded_sphere)
         {
-            movement_slope_similarity = Vector3.Distance(-grounded_slope_direction, slope_movement);
-            movement_slope_similarity = Mathf.Min(1, movement_slope_similarity);
-            movement_slope_similarity = Mathf.Max(0, movement_slope_similarity);
-            force *= movement_slope_similarity;
+            force = Vector3.ProjectOnPlane(force, grounded_slope_direction) * SLIDING_MOVEMENT_FORCE_MULTIPLIER;
         }
 
         // apply the force if no obstacle in the way.
@@ -315,7 +376,12 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
         RaycastHit movement_hit;
         is_movement_hit = Physics.SphereCast(transform.position, SPHERECAST_RADIUS, slope_movement, out movement_hit, 0.01f);
 
-        if(!is_movement_hit)
+        var step_offset_position = transform.position + (grounded_slope_normal * STEP_OFFSET_DISTANCE);
+
+        RaycastHit step_offset_movement_hit;
+        bool is_step_offset_movement_hit = Physics.SphereCast(step_offset_position, SPHERECAST_RADIUS, slope_movement, out step_offset_movement_hit, 0.01f);
+
+        if (!is_movement_hit)
         {
             // without an obstacle, apply the force forward.
 
@@ -323,6 +389,16 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
         }
         else
         {
+            // if there is an obstace, but the offset cast was clear,
+            // just apply a small upward force to scale obstacle.
+
+            if (!is_step_offset_movement_hit)
+            {
+                p_rigid_body.AddForce(force, ForceMode.VelocityChange);
+                p_rigid_body.AddForce(Vector3.up, ForceMode.VelocityChange);
+                return;
+            }
+
             // Get the relative sliding movement
             // against the wall, and apply the force that way.
 
@@ -340,30 +416,97 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     private void UpdatePlayerSliding()
     {
-        if (is_grounded_sphere && grounded_slope_angle > SLIDE_ANGLE_MIN)
+        if(is_partial_submerged && is_sliding)
         {
-            sliding_force += (grounded_slope_angle * 0.01f);
-        }
-        else if (is_grounded_sphere && grounded_slope_angle <= SLIDE_ANGLE_MIN)
-        {
-            sliding_force = 0.0f;
+            is_sliding = false;
+            sliding_resistance = 1.0f;
+            return;
         }
 
-        // If the slide force has increased beyond
-        // the minimum necessary, begin sliding.
+        // Start sliding if in a valid state.
 
-        bool was_sliding = is_sliding;
-        is_sliding = (sliding_force > SLIDE_FORCE_MIN);
-        
+        if((is_grounded_sphere && grounded_type == GameConstants.COLLIDER_TYPE_SLIDE)
+            || (is_grounded_sphere && grounded_slope_angle > SLIDING_ANGLE_MIN))
+        {
+            if (sliding_resistance > 0)
+                sliding_resistance -= Mathf.Max(
+                    SLIDING_RESISTANCE_MINIMUM_CHANGE, 
+                    grounded_slope_angle * SLIDING_RESISTANCE_SLOPE_ANGLE_MULTIPLIER);
+        }
+
+        // Decrease slide force if in a valid state.
+
+        if ((is_grounded_sphere && grounded_type != GameConstants.COLLIDER_TYPE_SLIDE)
+            && (is_grounded_sphere && grounded_slope_angle <= SLIDING_ANGLE_MAX_FOR_RECOVERY))
+        {
+            if (sliding_force > 0)
+                sliding_force -= SLIDING_FORCE_MINIMUM_CHANGE;
+
+            if (sliding_force < 0)
+                sliding_force = 0.0f;
+        }
+
+        // Recover from slide if in a valid state.
+
+        if ((is_grounded_sphere && grounded_type != GameConstants.COLLIDER_TYPE_SLIDE) 
+            && (is_grounded_sphere && grounded_slope_angle <= SLIDING_ANGLE_MIN))
+        {
+            if (p_rigid_body.velocity.magnitude < SLIDING_MAX_RECOVERY_SPEED)
+            {
+                sliding_resistance = 1.0f;
+                sliding_force = 0.0f;
+                is_sliding = false;
+            }
+ 
+        }
+
+        // Cap the sliding resistance.
+
+        if (sliding_resistance < 0.0f)
+            sliding_resistance = 0.0f;
+
+        if (sliding_resistance > SLIDING_RESISTANCE_MAX)
+            sliding_resistance = SLIDING_RESISTANCE_MAX;
+
+        // Begin sliding, or end sliding, based on the sliding resistance.
+
+        was_sliding = is_sliding;
+
+        // Begin sliding.
+        if (!was_sliding && sliding_resistance <= 0.0f)
+        {
+            is_sliding = true;
+            sliding_direction = grounded_slope_direction;
+        }
+
         // Play sound if starting sliding.
         if(!was_sliding && is_sliding)
             AudioSource.PlayClipAtPoint(audio_p_slide, this.transform.position);
 
-        // add a sliding force if currently grounded, and sliding.
+        // handle sliding forces, if sliding.
 
-        if (is_grounded_sphere && is_sliding)
+        if(is_sliding)
         {
-            p_rigid_body.AddForce(grounded_slope_direction * sliding_force, ForceMode.Acceleration);
+            if (is_grounded_sphere && grounded_slope_angle > SLIDING_FORCE_ANGLE_MIN)
+                sliding_direction = Vector3.RotateTowards(sliding_direction, grounded_slope_direction.normalized, 0.5f, 0.0f);
+
+            // increment and apply sliding forces if in the right criteria.
+
+            if ((is_grounded_sphere && grounded_type == GameConstants.COLLIDER_TYPE_SLIDE)
+                || (is_grounded_sphere && grounded_slope_angle > SLIDING_ANGLE_MIN))
+            {
+                if (sliding_force < SLIDING_FORCE_MINIMUM)
+                    sliding_force = SLIDING_FORCE_MINIMUM;
+
+                sliding_force += Mathf.Max(
+                    SLIDING_FORCE_MINIMUM_CHANGE,
+                    grounded_slope_angle * SLIDING_FORCE_SLOPE_ANGLE_MULTIPLIER);
+
+                if (sliding_force > SLIDING_FORCE_MAXIMUM)
+                    sliding_force = SLIDING_FORCE_MAXIMUM;
+
+                p_rigid_body.AddForce(sliding_direction * sliding_force, ForceMode.Acceleration);
+            }
         }
     }
 
@@ -500,13 +643,11 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     private void UpdatePlayerMovementSpeed()
     {
-        max_speed = (is_partial_submerged) ? MAX_WATER_SPEED : MAX_GROUND_SPEED;
-
         if (is_partial_submerged)
         {
-            if (p_rigid_body.velocity.magnitude > max_speed)
+            if (p_rigid_body.velocity.magnitude > MAX_WATER_SPEED)
             {
-                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, max_speed);
+                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, MAX_WATER_SPEED);
             }
 
             return;
@@ -514,9 +655,9 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
         if (is_grounded_sphere)
         {
-            if (p_rigid_body.velocity.magnitude > max_speed)
+            if (p_rigid_body.velocity.magnitude > MAX_GROUND_SPEED)
             {
-                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, max_speed);
+                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, MAX_GROUND_SPEED);
             }
         }
         else
@@ -524,10 +665,10 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
             Vector3 old_x_z = new Vector3(p_rigid_body.velocity.x, 0, p_rigid_body.velocity.z);
             Vector3 old_y = new Vector3(0,p_rigid_body.velocity.y,0);
 
-            if(old_x_z.magnitude > max_speed)
+            if(old_x_z.magnitude > MAX_GROUND_SPEED)
             {
                 
-                old_x_z = Vector3.ClampMagnitude(old_x_z, max_speed);
+                old_x_z = Vector3.ClampMagnitude(old_x_z, MAX_GROUND_SPEED);
                 p_rigid_body.velocity = old_x_z + old_y;
             }
         }
@@ -541,12 +682,15 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
             || (is_attack))
             return;
 
-        var movement = Quaternion.Euler(0, p_camera.transform.eulerAngles.y, 0) * input_movement;
+        if (is_sliding)
+            facing_direction = Vector3.ProjectOnPlane(sliding_direction, Vector3.up);
+        else
+            facing_direction = Quaternion.Euler(0, p_camera.transform.eulerAngles.y, 0) * input_movement;
 
-        Vector3 new_direction = Vector3.RotateTowards(p_render.forward, movement, ANIM_SPEED_FACING_ROTATION, 0.0f);
+        facing_direction_delta = Vector3.RotateTowards(p_render.forward, facing_direction, ANIM_SPEED_FACING_ROTATION, 0.0f);
 
         // Move our position a step closer to the target.
-        p_render.rotation = Quaternion.LookRotation(new_direction);
+        p_render.rotation = Quaternion.LookRotation(facing_direction_delta);
     }
 
     
@@ -554,7 +698,7 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     private void UpdatePlayerAnimationValues()
     {
-        p_animator.SetBool("anim_is_grounded", is_grounded_sphere);
+        p_animator.SetBool("anim_is_grounded", is_grounded_ray);
         p_animator.SetBool("anim_is_moving", p_rigid_body.velocity.magnitude > 0.025f);
         p_animator.SetBool("anim_is_rising", p_rigid_body.velocity.y > 0);
         p_animator.SetBool("anim_is_sliding", is_sliding);
@@ -590,7 +734,7 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
 
     public (bool, string, float, bool, bool) UpdateFootstepController()
     {
-        if (is_attack)
+        if (is_attack || is_sliding)
         {
             return (false,
                 grounded_type,
@@ -610,5 +754,29 @@ public class PlayerMovementController : MonoBehaviour, IActorFootstepManager, IC
     public bool UpdateCameraAudioController()
     {
         return is_full_submerged;
+    }
+
+    // Splash interface.
+
+    public (float, bool, bool) UpdateSplashController()
+    {
+        return (water_y_level, is_in_water, is_full_submerged);
+    }
+
+    void OnGUI()
+    {
+        GUI.color = Color.red;
+        GUI.Label(DEBUG_RECTANGLE,
+            "movement hit: " + is_movement_hit.ToString()
+            + "\nupward slope similarity: " + movement_upward_slope_similarity.ToString()
+            + "\ndownward slope similarity: " + movement_downward_slope_similarity.ToString()
+            + "\nsliding force: " + sliding_force.ToString()
+            + "\nfloor angle: " + grounded_slope_angle
+            + "\nsliding resistance: " + sliding_resistance
+            + "\nis sliding: " + is_sliding
+            + "\ngrounded sphere: " + is_grounded_sphere
+            + "\ngrounded ray: " + is_grounded_ray
+            +"\nfriction: " + p_sphere_collider.material.dynamicFriction
+            +"\ndrag: " + p_rigid_body.drag);
     }
 }
