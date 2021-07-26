@@ -10,9 +10,9 @@ public class ActorFootstepController : MonoBehaviour
 
     public IActorFootstepManager manager;
 
-    private (bool, string, float, bool, bool) input_tuple;
+    private ActorFootstepManager manager_data;
     private bool is_step_grounded = false;
-    private string step_type = GameConstants.COLLIDER_TYPE_DEFAULT;
+    private GameConstants.GroundType step_type = GameConstants.GroundType.ground_default;
     private float step_speed = 0.0f;
 
     // step variables.
@@ -52,7 +52,7 @@ public class ActorFootstepController : MonoBehaviour
 
     // collection variables.
 
-    Dictionary<(string,int), AudioClip> audio_library;
+    Dictionary<(GameConstants.GroundType,int), AudioClip> audio_library;
 
     private void Start()
     {
@@ -82,28 +82,28 @@ public class ActorFootstepController : MonoBehaviour
         audio_source.playOnAwake = false;
         audio_source.volume = 0.375f;
 
-        audio_library = new Dictionary<(string,int), AudioClip>();
+        audio_library = new Dictionary<(GameConstants.GroundType, int), AudioClip>();
 
-        audio_library.Add((GameConstants.COLLIDER_TYPE_DEFAULT,1), audio_step_default_1);
-        audio_library.Add((GameConstants.COLLIDER_TYPE_DEFAULT,2), audio_step_default_2);
+        audio_library.Add((GameConstants.GroundType.ground_default,1), audio_step_default_1);
+        audio_library.Add((GameConstants.GroundType.ground_default, 2), audio_step_default_2);
 
-        audio_library.Add((GameConstants.COLLIDER_TYPE_SLIDE, 1), audio_step_default_1);
-        audio_library.Add((GameConstants.COLLIDER_TYPE_SLIDE, 2), audio_step_default_2);
+        audio_library.Add((GameConstants.GroundType.ground_slide, 1), audio_step_default_1);
+        audio_library.Add((GameConstants.GroundType.ground_slide, 2), audio_step_default_2);
 
-        audio_library.Add((GameConstants.COLLIDER_TYPE_WATER, 1), audio_step_water_1);
-        audio_library.Add((GameConstants.COLLIDER_TYPE_WATER, 2), audio_step_water_2);
+        audio_library.Add((GameConstants.GroundType.ground_water, 1), audio_step_water_1);
+        audio_library.Add((GameConstants.GroundType.ground_water, 2), audio_step_water_2);
 
-        audio_library.Add((GameConstants.COLLIDER_TYPE_GRASS, 1), audio_step_grass_1);
-        audio_library.Add((GameConstants.COLLIDER_TYPE_GRASS, 2), audio_step_grass_2);
+        audio_library.Add((GameConstants.GroundType.ground_grass, 1), audio_step_grass_1);
+        audio_library.Add((GameConstants.GroundType.ground_grass, 2), audio_step_grass_2);
 
-        audio_library.Add((GameConstants.COLLIDER_TYPE_SAND, 1), audio_step_sand_1);
-        audio_library.Add((GameConstants.COLLIDER_TYPE_SAND, 2), audio_step_sand_2);
+        audio_library.Add((GameConstants.GroundType.ground_sand, 1), audio_step_sand_1);
+        audio_library.Add((GameConstants.GroundType.ground_sand, 2), audio_step_sand_2);
 
-        audio_library.Add((GameConstants.COLLIDER_TYPE_STONE, 1), audio_step_stone_1);
-        audio_library.Add((GameConstants.COLLIDER_TYPE_STONE, 2), audio_step_stone_2);
+        audio_library.Add((GameConstants.GroundType.ground_stone, 1), audio_step_stone_1);
+        audio_library.Add((GameConstants.GroundType.ground_stone, 2), audio_step_stone_2);
 
-        audio_library.Add((GameConstants.COLLIDER_TYPE_WOOD, 1), audio_step_wood_1);
-        audio_library.Add((GameConstants.COLLIDER_TYPE_WOOD, 2), audio_step_wood_2);
+        audio_library.Add((GameConstants.GroundType.ground_wood, 1), audio_step_wood_1);
+        audio_library.Add((GameConstants.GroundType.ground_wood, 2), audio_step_wood_2);
     }
 
     private void FixedUpdate()
@@ -115,13 +115,13 @@ public class ActorFootstepController : MonoBehaviour
     {
         // Get the status from the manager.
 
-        input_tuple = manager.UpdateFootstepController();
+        manager_data = manager.UpdateFootstepController();
 
-        is_step_grounded = input_tuple.Item1;
-        step_type = input_tuple.Item2;
-        step_speed = input_tuple.Item3;
-        is_in_water = input_tuple.Item4;
-        is_submerged = input_tuple.Item5;
+        is_step_grounded = manager_data.is_grounded;
+        step_type = manager_data.ground_type;
+        step_speed = manager_data.velocity;
+        is_in_water = manager_data.is_in_water;
+        is_submerged = manager_data.is_submerged;
 
         // Only do something if grounded.
 
@@ -155,7 +155,7 @@ public class ActorFootstepController : MonoBehaviour
         // Check for water, set the type to water.
 
         if (is_in_water)
-            step_type = GameConstants.COLLIDER_TYPE_WATER;
+            step_type = GameConstants.GroundType.ground_water;
 
         // Play the sound.
 

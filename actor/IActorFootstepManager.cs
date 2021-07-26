@@ -14,6 +14,25 @@ namespace Assets.script
         // in water, 
         // partial submerged, 
 
-        (bool, string, float, bool, bool) UpdateFootstepController();
+        ActorFootstepManager UpdateFootstepController();
     }
+
+    public class ActorFootstepManager
+    {
+        public bool is_grounded;
+        public GameConstants.GroundType ground_type;
+        public float velocity;
+        public bool is_in_water;
+        public bool is_submerged;
+
+        public ActorFootstepManager()
+        {
+            is_grounded = false;
+            ground_type = GameConstants.GroundType.ground_default;
+            velocity = 0f;
+            is_in_water = false;
+            is_submerged = false;
+        }
+    }
+
 }

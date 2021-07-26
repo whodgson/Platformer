@@ -13,6 +13,7 @@ public class ActorSplashController : MonoBehaviour
     public float splash_scale_multiplier = 1f;
 
     private float timer;
+    ActorSplashManager manager_data;
     private float y_level;
     private bool is_in_water;
     private bool is_submerged;
@@ -35,10 +36,10 @@ public class ActorSplashController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        (float, bool, bool) data = manager.UpdateSplashController();
-        y_level = data.Item1;
-        is_in_water = data.Item2;
-        is_submerged = data.Item3;
+        manager_data = manager.UpdateSplashController();
+        y_level = manager_data.water_level;
+        is_in_water = manager_data.is_in_water;
+        is_submerged = manager_data.is_submerged;
 
 
         timer += (Time.deltaTime * TIMER_MULTIPLIER);

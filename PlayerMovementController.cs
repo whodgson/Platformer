@@ -4,225 +4,264 @@ using UnityEngine;
 using Assets.script;
 
 public class PlayerMovementController : MonoBehaviour
-    ,IActorFootstepManager
+    , IActorFootstepManager
     , ICameraAudioManager
     , IActorSplashManager
 {
+    // state constants.
+
+    public enum PlayerState
+    {
+        player_default,
+        player_jump,
+        player_water_default,
+        player_water_jump
+    }
+
     // input constants.
 
-    const float INPUT_MOVEMENT_THRESHOLD = 0.01f;
+    const float INPUT_DIRECTIONAL_THRESHOLD = 0.01f;
+    const float INPUT_BUTTON_THRESHOLD = 0.5f;
 
-    // physics constants.
+    // component constants.
 
-    const float ACCEL_GROUNDED = 0.5f;
-    const float ACCEL_AIR = 0.2f;
+    const string MAIN_COLLIDER_GAME_OBJECT_NAME = "main_collider";
+    const string PLAYER_RENDER_GAME_OBJECT_NAME = "player_render";
+
+    // physical constants.
+
+    const float RIGID_BODY_MASS = 1f;
+    const float RIGID_BODY_DRAG = 1f;
+    const float RIGID_BODY_ANGULAR_DRAG = 0.05f;
+
+    const float GRAVITY_MULTIPLIER = 2.0f;
 
     const float DRAG_GROUNDED = 5f;
-    const float DRAG_SLIDING = 1f;
-    const float DRAG_AIR = 0f;
+    const float DRAG_AIR = 1f;
 
-    const float MAX_GROUND_SPEED = 3.0f;
-    const float MAX_WATER_SPEED = 2.0f;
+    const float ACCELERATION_GROUNDED = 0.5f;
+    const float ACCELERATION_AIR = 0.2f;
 
-    // collision constants.
+    const float MAX_SPEED_GROUNDED = 3.0f;
+    const float MAX_SPEED_WATER = 2.0f;
 
-    const float SPHERECAST_RADIUS = 0.18f;
-    const float SPHERECAST_RAY_DISTANCE = 100f;
+    // grounded constants.
 
-    const float RAY_COLLIDER_RAY_DISTANCE = 100f;
+    const float GROUNDED_RAYCAST_ADDITIONAL_DISTANCE = 0.1f;
+    const float GROUNDED_SPHERECAST_ADDITIONAL_DISTANCE = 0.025f;
 
-    const float GROUNDED_RAY_MAX_DISTANCE = 0.3f;
-    const float GROUNDED_SPHERE_MAX_DISTANCE = 0.02f;
+    const float GROUNDED_RAYCAST_DISTANCE = 100f;
 
+    const float GROUNDED_SPHERECAST_RADIUS = 0.187f;
 
-    const float STEP_OFFSET_DISTANCE = 0.05f;
+    // movement constants.
 
-    // sliding contstants.
+    readonly Vector3 STEP_MOVEMENT_OFFSET = new Vector3(0, 0.15f, 0);
+    const float STEP_MAX_VELOCITY = 1f;
 
-    const float SLIDING_FORCE_ANGLE_MIN = 3f;
-    const float SLIDING_ANGLE_MAX_FOR_RECOVERY = 30f;
-    const float SLIDING_ANGLE_MIN = 50f;
-    const float SLIDING_ANGLE_MAX = 85f;
+    const float MOVEMENT_SPHERECAST_DISTANCE = 0.1f;
 
-    const float SLIDING_FORCE_MINIMUM = 4f;
-    const float SLIDING_FORCE_MAXIMUM = 16f;
-    const float SLIDING_FORCE_MINIMUM_CHANGE = 0.05f;
+    // jump constants.
 
-    const float SLIDING_FORCE_SLOPE_ANGLE_MULTIPLIER = 0.001f;
-
-    const float SLIDING_RESISTANCE_MAX = 1.0f;
-    const float SLIDING_RESISTANCE_MINIMUM_CHANGE = 0.01f;
-    const float SLIDING_RESISTANCE_SLOPE_ANGLE_MULTIPLIER = 0.01f;
-
-    const float SLIDING_MAX_RECOVERY_SPEED = 1.0f;
-
-    const float SLIDING_MOVEMENT_FORCE_MULTIPLIER = 0.25f;
-
-    // jumping constants.
-
-    const float JUMP_FORCE = 3f;
-    const float JUMP_FORCE_POWER = 0.4f;
-    const float JUMP_POWER_MAX = 1.0f;
-
-    // swimming constants.
-
-    const float SWIM_FORCE = 0.5f;
-
-    // animation constants.
-
-    const float ANIM_SPEED_FACING_ROTATION = 0.5f;
+    const float JUMP_FORCE_MULTIPLIER = 4.0f;
+    const float JUMP_PERSIST_FORCE_MULTIPLIER = 0.4f;
+    const int JUMP_PERSIST_ENERGY_MAX = 10;
 
     // water constants.
 
-    const float WATER_PARTIAL_SUBMERGED_OFFSET = 0.0f;
-    const float WATER_FULL_SUBMERGED_OFFSET = 0.1875f;
+    readonly Vector3 WATER_PARTIAL_SUBMERGED_OFFSET = new Vector3(0, 0, 0);
+    readonly Vector3 WATER_FULL_SUBMERGED_OFFSET = new Vector3(0, 0.1625f, 0);
 
-    // attack constants.
+    // animation constants.
 
-    const float ATTACK_TIMER_INCREMENT = 0.07f;
+    const float ANIMATION_TURNING_SPEED_MULTIPLIER = 0.5f;
 
-    // Debug constants.
+    // state variables.
 
-    private readonly Rect DEBUG_RECTANGLE = new Rect(0, 64, 640, 480);
-
-    // physics variables.
-
-    float movement_upward_slope_similarity = 0.0f;
-    float movement_downward_slope_similarity = 0.0f;
+    PlayerState player_state = PlayerState.player_default;
 
     // input variables.
 
-    Vector3 input_movement = new Vector3(0, 0, 0);
-    bool is_input_movement = false;
-    bool is_input_jumping = false;
-    bool is_input_attack = false;
+    Vector3 input_directional = Vector3.zero;
+    bool is_input_directional = false;
+    bool was_input_directional = false;
 
-    bool was_input_jumping = false;
-    bool was_input_attack = false;
-
-    // collision variables.
-
-    private bool is_grounded_sphere = false;
-    private bool is_grounded_ray = false;
-
-    private bool is_sphere_hit = false;
-    private bool is_ray_hit = false;
-
-    RaycastHit ray_hit_info;
-    RaycastHit sphere_hit_info;
-
-    private float grounded_slope_angle = 0.0f;
-    private Vector3 grounded_slope_normal = Vector3.up;
-    private Vector3 grounded_slope_direction = Vector3.up;
-
-    string grounded_type = string.Empty;
-
-    private bool is_movement_hit = false;
-    private bool is_wall_movement_hit = false;
-
-    // sliding variables.
-
-    private bool was_sliding = false;
-    private bool is_sliding = false;
-    private float sliding_force = 0.0f;
-    private float sliding_resistance;
-    private Vector3 sliding_direction;
-
-    // jumping variables.
-
-    private bool is_able_to_jump = false;
-    private bool is_jumping = false;
-    private float jump_power = 1.0f;
+    bool is_input_jump = false;
+    bool was_input_jump = false;
 
     // component variables.
 
-    public GameObject p_camera;
-    private Rigidbody p_rigid_body;
-    private SphereCollider p_sphere_collider;
-    private Transform p_render;
-    private Animator p_animator;
+    private GameMasterController master;
+    private Rigidbody rigid_body;
+    private SphereCollider player_sphere_collider;
+    private Animator player_animator;
+    private GameObject camera_object;
+    private GameObject player_render;
 
-    // audio variables.
+    // grounded variables.
 
-    AudioClip audio_p_jump;
-    AudioClip audio_p_slide;
-    AudioClip audio_p_attack;
+    float grounded_raycast_max_distance = 0f;
+    float grounded_spherecast_max_distance = 0f;
+
+    RaycastHit raycast_hit_info;
+    bool is_raycast_hit = false;
+    bool is_raycast_grounded = false;
+
+    RaycastHit spherecast_hit_info;
+    bool is_spherecast_hit = false;
+    bool is_spherecast_grounded = false;
+
+    float raycast_grounded_slope_angle = 0.0f;
+    Vector3 raycast_grounded_slope_normal = Vector3.up;
+    Vector3 raycast_grounded_slope_direction = Vector3.up;
+
+    Vector3 spherecast_grounded_slope_normal = Vector3.up;
+
+    GameConstants.GroundType ground_type;
+
+    // movement variables.
+
+    RaycastHit movement_hit;
+    RaycastHit step_movement_hit;
+
+    bool is_movement_hit = false;
+    bool is_step_movement_hit = false;
+
+    // jump variables.
+
+    int jump_persist_energy = 0;
+
+    // moving object variables.
+
+    List<GameObject> moving_object_collision_list = new List<GameObject>();
+    bool is_colliding_moving_object = false;
 
     // water variables.
 
-    float water_y_level = 0.0f;
-    bool is_in_water = false;
+    List<GameObject> water_object_collision_list = new List<GameObject>();
+    bool is_colliding_water_object = false;
     bool is_partial_submerged = false;
     bool is_full_submerged = false;
+    float water_y_level = 0;
 
-    // attack variables.
+    // interface variables.
 
-    bool is_attack = false;
-    float attack_timer = 0.0f;
+    CameraAudioManager camera_audio_manager;
+    ActorFootstepManager footstep_manager;
+    ActorSplashManager splash_manager;
 
-    // facing variables.
-
-    Vector3 facing_direction;
-    Vector3 facing_direction_delta;
-
-    // game variables.
-
-    GameMasterController master;
-
-    void Start()
+      
+    private void Start()
     {
-        master = GameObject.FindObjectOfType<GameMasterController>();
+        master = GameMasterController.GetMasterController();
 
-        p_rigid_body = GetComponent<Rigidbody>();
-        p_sphere_collider = GetComponent<SphereCollider>();
-        p_render = this.transform.Find("player_render");
-        p_animator = GetComponent<Animator>();
-        p_camera = GameObject.FindGameObjectWithTag(GameConstants.TAG_MAIN_CAMERA);
+        // initialise componenets.
 
-        // load audio.
+        rigid_body = this.GetComponent<Rigidbody>();
+        player_sphere_collider = GameObject.Find
+            (MAIN_COLLIDER_GAME_OBJECT_NAME).GetComponent<SphereCollider>();
+        player_animator = this.GetComponent<Animator>();
+        camera_object = GameObject.FindGameObjectWithTag(GameConstants.TAG_MAIN_CAMERA);
+        player_render = GameObject.Find(PLAYER_RENDER_GAME_OBJECT_NAME);
 
-        audio_p_jump = Resources.Load("sound/sfx_p_jump") as AudioClip;
-        audio_p_slide = Resources.Load("sound/sfx_p_slide") as AudioClip;
-        audio_p_attack = Resources.Load("sound/sfx_p_attack") as AudioClip;
+        // initialise interface.
 
-        // init variables.
+        camera_audio_manager = new CameraAudioManager();
+        footstep_manager = new ActorFootstepManager();
+        splash_manager = new ActorSplashManager();
 
-        sliding_resistance = SLIDING_RESISTANCE_MAX;
-        sliding_direction = Vector3.up;
+        // setup.
 
-        facing_direction = Vector3.up;
-        facing_direction_delta = Vector3.up;
-
+        InitialisePhysicalParameters();
     }
 
-    
+    private void InitialisePhysicalParameters()
+    {
+        // rigid body inits.
+
+        rigid_body.mass = RIGID_BODY_MASS;
+        rigid_body.drag = RIGID_BODY_DRAG;
+        rigid_body.angularDrag = RIGID_BODY_ANGULAR_DRAG;
+
+        rigid_body.constraints = RigidbodyConstraints.FreezeRotation;
+
+        // collider inits.
+
+        grounded_raycast_max_distance = player_sphere_collider.radius + GROUNDED_RAYCAST_ADDITIONAL_DISTANCE;
+        grounded_spherecast_max_distance = GROUNDED_SPHERECAST_ADDITIONAL_DISTANCE;
+    }
 
     private void FixedUpdate()
     {
         UpdatePlayerInput();
 
-        UpdatePlayerIsGroundedSphere();
-        UpdatePlayerIsGroundedRay();
+        if (master.game_state == GameState.Game)
+        {
+            // run update if in game state.
 
-        UpdatePlayerGravity();
-        UpdatePlayerFriction();
-        UpdatePlayerDrag();
-        UpdatePlayerMovement();
-        UpdatePlayerSliding();
-        UpdatePlayerWater();
-        UpdatePlayerJumping();
-        UpdatePlayerSwimming();
-        UpdatePlayerAttack();
+            rigid_body.isKinematic = false;
+            player_animator.enabled = true;
 
-        UpdatePlayerMovementSpeed();
+            UpdateWaterStatus();
+            UpdateMovingObjectStatus();
 
-        UpdatePlayerFacingDirection();
-        
-        UpdatePlayerAnimationValues();
+            UpdateGroundedRay();
+            UpdateGroundedSphere();
+            UpdateGravity();
+            UpdateDragAndFriction();
+
+            // update the player state.
+
+            if (player_state == PlayerState.player_default)
+                UpdateDefaultPlayerState();
+            else if (player_state == PlayerState.player_jump)
+                UpdateJumpPlayerState();
+            else if (player_state == PlayerState.player_water_default)
+                UpdateDefaultWaterPlayerState();
+
+            // do state specific actions.
+
+            if (player_state == PlayerState.player_default)
+            {
+                UpdateDefaultMovement();
+                UpdateDefaultSpeed();
+            }
+
+            if(player_state == PlayerState.player_jump)
+            {
+                UpdateJumpJump();
+                UpdateJumpMovement();
+                UpdateJumpSpeed();
+            }
+
+            if(player_state == PlayerState.player_water_default)
+            {
+                UpdateDefaultMovement();
+                UpdateDefaultWaterSpeed();
+            }
+
+            // update animator.
+
+            UpdateAnimator();
+        }
+        else
+        {
+            // freeze player.
+
+            rigid_body.isKinematic = true;
+            player_animator.enabled = false;
+        }
     }
 
     private void UpdatePlayerInput()
     {
+        // get previous inputs.
+
+        was_input_directional = is_input_directional;
+        was_input_jump = is_input_jump;
+
+        // get input from input mapper.
+
         float input_horizontal = master.input_controller.action_horizontal.ReadValue<float>();
         float input_vertical = master.input_controller.action_vertical.ReadValue<float>();
 
@@ -231,552 +270,499 @@ public class PlayerMovementController : MonoBehaviour
         if (input.magnitude > 1)
             input = input.normalized;
 
-        input_movement = input;
-        is_input_movement = (input_movement.magnitude > INPUT_MOVEMENT_THRESHOLD);
+        input_directional = input;
+        is_input_directional = input_directional.magnitude > INPUT_DIRECTIONAL_THRESHOLD;
 
-        is_input_jumping = master.input_controller.action_positive.ReadValue<float>() > 0.5f;
+        // get button inputs.
 
-        is_input_attack = master.input_controller.action_interact.ReadValue<float>() > 0.5f;
+        is_input_jump = master.input_controller.action_positive.ReadValue<float>() >= INPUT_BUTTON_THRESHOLD;
     }
 
-    private void UpdatePlayerIsGroundedSphere()
+    private void UpdateWaterStatus()
     {
-        // General grounded check.
+        if (!is_colliding_water_object)
+            return;
 
-        is_sphere_hit = Physics.SphereCast(this.transform.position, SPHERECAST_RADIUS, Vector3.down, out sphere_hit_info, SPHERECAST_RAY_DISTANCE);
-
-        if(is_sphere_hit)
-        {
-            // set grounded, if under max distance.
-            is_grounded_sphere = sphere_hit_info.distance <= GROUNDED_SPHERE_MAX_DISTANCE;
-
-            // set the slope normal.
-            grounded_slope_normal = sphere_hit_info.normal;
-
-            // set the ground slope direction.
-            var temp = Vector3.Cross(sphere_hit_info.normal, Vector3.down);
-            grounded_slope_direction = Vector3.Cross(temp, sphere_hit_info.normal);
-
-            grounded_type = sphere_hit_info.collider?.sharedMaterial?.name 
-                ?? GameConstants.COLLIDER_TYPE_DEFAULT;
-        }
-        else
-        {
-            grounded_slope_angle = 0.0f;
-            grounded_slope_normal = Vector3.up;
-        }
+        is_partial_submerged = (this.transform.position + WATER_PARTIAL_SUBMERGED_OFFSET).y <= water_y_level;
+        is_full_submerged = (this.transform.position + WATER_FULL_SUBMERGED_OFFSET).y <= water_y_level;
     }
 
-    private void UpdatePlayerIsGroundedRay()
+    private void UpdateMovingObjectStatus()
     {
-        // Specific triangle grounded check.
+        if (!is_colliding_moving_object)
+            return;
+    }
 
-        is_ray_hit = Physics.Raycast(this.transform.position, Vector3.down, out ray_hit_info, RAY_COLLIDER_RAY_DISTANCE);
+    private void UpdateGroundedRay()
+    {
+        // check grounding by ray.
 
-        if(is_ray_hit)
+        is_raycast_hit = Physics.Raycast(this.transform.position, Vector3.down, out raycast_hit_info, GROUNDED_RAYCAST_DISTANCE);
+
+        if(is_raycast_hit)
         {
             // set grounded, if under max distance.
-            is_grounded_ray = ray_hit_info.distance <= GROUNDED_RAY_MAX_DISTANCE;
+            is_raycast_grounded = raycast_hit_info.distance <= grounded_raycast_max_distance;
 
             // set the angle of the surface.
-            grounded_slope_angle = Vector3.Angle(ray_hit_info.normal, Vector3.up);
+            raycast_grounded_slope_angle = Vector3.Angle(raycast_hit_info.normal, Vector3.up);
 
             // set the slope normal.
-            grounded_slope_normal = ray_hit_info.normal;
+            raycast_grounded_slope_normal = raycast_hit_info.normal;
 
             // set the ground slope direction.
-            var temp = Vector3.Cross(ray_hit_info.normal, Vector3.down);
-            grounded_slope_direction = Vector3.Cross(temp, ray_hit_info.normal);
+            var temp = Vector3.Cross(raycast_hit_info.normal, Vector3.down);
+            raycast_grounded_slope_direction = Vector3.Cross(temp, raycast_hit_info.normal);
+
+            // if grounded, and in the regular state, set the position above the floor.
+
+            if (is_raycast_grounded && player_state == PlayerState.player_default)
+            {
+                rigid_body.MovePosition(new Vector3(
+                    rigid_body.position.x,
+                    raycast_hit_info.point.y + raycast_hit_info.distance,
+                    rigid_body.position.z));
+                Debug.DrawRay(transform.position, Vector3.down, Color.magenta);
+            }
         }
     }
 
-    private void UpdatePlayerGravity()
+    private void UpdateGroundedSphere()
     {
-        if (p_rigid_body.velocity.y > 0)
-        {
-            p_rigid_body.AddForce(Physics.gravity, ForceMode.Acceleration);
-        }
-        else
-        {
-            p_rigid_body.AddForce(Physics.gravity * 2, ForceMode.Acceleration);
-        }
-    }
+        // check grounding by sphere.
 
-    private void UpdatePlayerFriction()
-    {
-        p_sphere_collider.material.bounciness = 0;
+        is_spherecast_hit = Physics.SphereCast(transform.position, GROUNDED_SPHERECAST_RADIUS, Vector3.down, out spherecast_hit_info, GROUNDED_RAYCAST_DISTANCE);
 
-        if (!is_input_movement && is_grounded_ray && !is_sliding)
+        if(is_spherecast_hit)
         {
-            p_sphere_collider.material.dynamicFriction = 100; // 100
-            p_sphere_collider.material.staticFriction = 100; // 100
-        }
-        else
-        {
-            p_sphere_collider.material.dynamicFriction = 0f;
-            p_sphere_collider.material.staticFriction = 0f;
-        }
-    }
+            is_spherecast_grounded = spherecast_hit_info.distance <= grounded_spherecast_max_distance;
 
-    private void UpdatePlayerDrag()
-    {
-        if (is_grounded_ray)
-        {
-            if(is_sliding)
-                p_rigid_body.drag = DRAG_SLIDING;
+            // set the slope normal.
+            spherecast_grounded_slope_normal = raycast_hit_info.normal;
+
+            // set the grounded type, if grounded.
+            if(is_spherecast_grounded)
+            {
+                if (spherecast_hit_info.collider.gameObject
+                    .GetComponent<MapAttributeGroundType>() == null)
+                    ground_type = GameConstants.GroundType.ground_default;
+                else
+                    ground_type = spherecast_hit_info.collider.gameObject
+                        .GetComponent<MapAttributeGroundType>().ground_type;
+            }
             else
-                p_rigid_body.drag = DRAG_GROUNDED;
+            {
+                ground_type = GameConstants.GroundType.ground_default;
+            }
+        }
+    }
+
+    private void UpdateGravity()
+    {
+        // apply rising or falling gravity.
+
+        if (rigid_body.velocity.y > 0)
+            rigid_body.AddForce(Physics.gravity, ForceMode.Acceleration);
+        else
+            rigid_body.AddForce(Physics.gravity * GRAVITY_MULTIPLIER, ForceMode.Acceleration);
+    }
+
+    private void UpdateDragAndFriction()
+    {
+        // update based on circumstances.
+
+        rigid_body.drag = is_raycast_grounded ? DRAG_GROUNDED : DRAG_AIR;
+
+        if (is_input_directional || !is_raycast_grounded)
+        {
+            player_sphere_collider.material.dynamicFriction = 0f;
+            player_sphere_collider.material.staticFriction = 0f;
         }
         else
         {
-            p_rigid_body.drag = DRAG_AIR;
-        }
-    }
-
-    private void UpdatePlayerMovement()
-    {
-        if (is_attack)
-            return;
-
-        // get the input vector with respect to the camera.
-
-        var movement = Quaternion.Euler(0, p_camera.transform.eulerAngles.y, 0) * input_movement;
-
-        // get the movement vector, with respect to the current slope.
-
-        var slope_movement = Vector3.ProjectOnPlane(movement, grounded_slope_normal);
-
-        // get the force for movement.
-
-        float acceleration = (is_grounded_sphere) ? ACCEL_GROUNDED : ACCEL_AIR;
-
-        var force = slope_movement * acceleration;
-
-        // Update the slope similarity.
-        // Similarity is determined by the dot products of the normalised vectors.
-
-        movement_upward_slope_similarity = Vector3.Dot(-grounded_slope_direction.normalized, slope_movement.normalized);
-        movement_upward_slope_similarity = Mathf.Min(1, movement_upward_slope_similarity);
-        movement_upward_slope_similarity = Mathf.Max(0, movement_upward_slope_similarity);
-
-        movement_downward_slope_similarity = Vector3.Dot(grounded_slope_direction.normalized, slope_movement.normalized);
-        movement_downward_slope_similarity = Mathf.Min(1, movement_downward_slope_similarity);
-        movement_downward_slope_similarity = Mathf.Max(0, movement_downward_slope_similarity);
-
-        // If sliding and grounded, multiply the 
-        // force by the movement vs. slope similarity.
-
-        if (is_sliding && is_grounded_sphere)
-        {
-            force = Vector3.ProjectOnPlane(force, grounded_slope_direction) * SLIDING_MOVEMENT_FORCE_MULTIPLIER;
-        }
-
-        // apply the force if no obstacle in the way.
-
-        RaycastHit movement_hit;
-        is_movement_hit = Physics.SphereCast(transform.position, SPHERECAST_RADIUS, slope_movement, out movement_hit, 0.01f);
-
-        var step_offset_position = transform.position + (grounded_slope_normal * STEP_OFFSET_DISTANCE);
-
-        RaycastHit step_offset_movement_hit;
-        bool is_step_offset_movement_hit = Physics.SphereCast(step_offset_position, SPHERECAST_RADIUS, slope_movement, out step_offset_movement_hit, 0.01f);
-
-        if (!is_movement_hit)
-        {
-            // without an obstacle, apply the force forward.
-
-            p_rigid_body.AddForce(force, ForceMode.VelocityChange);
-        }
-        else
-        {
-            // if there is an obstace, but the offset cast was clear,
-            // just apply a small upward force to scale obstacle.
-
-            if (!is_step_offset_movement_hit)
+            if (moving_object_collision_list.Count == 0)
             {
-                p_rigid_body.AddForce(force, ForceMode.VelocityChange);
-                p_rigid_body.AddForce(Vector3.up, ForceMode.VelocityChange);
-                return;
+                player_sphere_collider.material.dynamicFriction = 100;
+                player_sphere_collider.material.staticFriction = 100;
             }
-
-            // Get the relative sliding movement
-            // against the wall, and apply the force that way.
-
-            var relative_vector = Vector3.ProjectOnPlane(slope_movement, movement_hit.normal);
-            var relative_force = relative_vector * acceleration;
-
-            RaycastHit wall_movement_hit;
-            is_wall_movement_hit = Physics.SphereCast(transform.position, SPHERECAST_RADIUS, relative_vector, out wall_movement_hit, relative_force.magnitude);
-
-            if(!is_wall_movement_hit)
-                p_rigid_body.AddForce(relative_force, ForceMode.VelocityChange);
-        }
-
-    }
-
-    private void UpdatePlayerSliding()
-    {
-        if(is_partial_submerged && is_sliding)
-        {
-            is_sliding = false;
-            sliding_resistance = 1.0f;
-            return;
-        }
-
-        // Start sliding if in a valid state.
-
-        if((is_grounded_sphere && grounded_type == GameConstants.COLLIDER_TYPE_SLIDE)
-            || (is_grounded_sphere && grounded_slope_angle > SLIDING_ANGLE_MIN))
-        {
-            if (sliding_resistance > 0)
-                sliding_resistance -= Mathf.Max(
-                    SLIDING_RESISTANCE_MINIMUM_CHANGE, 
-                    grounded_slope_angle * SLIDING_RESISTANCE_SLOPE_ANGLE_MULTIPLIER);
-        }
-
-        // Decrease slide force if in a valid state.
-
-        if ((is_grounded_sphere && grounded_type != GameConstants.COLLIDER_TYPE_SLIDE)
-            && (is_grounded_sphere && grounded_slope_angle <= SLIDING_ANGLE_MAX_FOR_RECOVERY))
-        {
-            if (sliding_force > 0)
-                sliding_force -= SLIDING_FORCE_MINIMUM_CHANGE;
-
-            if (sliding_force < 0)
-                sliding_force = 0.0f;
-        }
-
-        // Recover from slide if in a valid state.
-
-        if ((is_grounded_sphere && grounded_type != GameConstants.COLLIDER_TYPE_SLIDE) 
-            && (is_grounded_sphere && grounded_slope_angle <= SLIDING_ANGLE_MIN))
-        {
-            if (p_rigid_body.velocity.magnitude < SLIDING_MAX_RECOVERY_SPEED)
-            {
-                sliding_resistance = 1.0f;
-                sliding_force = 0.0f;
-                is_sliding = false;
-            }
- 
-        }
-
-        // Cap the sliding resistance.
-
-        if (sliding_resistance < 0.0f)
-            sliding_resistance = 0.0f;
-
-        if (sliding_resistance > SLIDING_RESISTANCE_MAX)
-            sliding_resistance = SLIDING_RESISTANCE_MAX;
-
-        // Begin sliding, or end sliding, based on the sliding resistance.
-
-        was_sliding = is_sliding;
-
-        // Begin sliding.
-        if (!was_sliding && sliding_resistance <= 0.0f)
-        {
-            is_sliding = true;
-            sliding_direction = grounded_slope_direction;
-        }
-
-        // Play sound if starting sliding.
-        if(!was_sliding && is_sliding)
-            AudioSource.PlayClipAtPoint(audio_p_slide, this.transform.position);
-
-        // handle sliding forces, if sliding.
-
-        if(is_sliding)
-        {
-            if (is_grounded_sphere && grounded_slope_angle > SLIDING_FORCE_ANGLE_MIN)
-                sliding_direction = Vector3.RotateTowards(sliding_direction, grounded_slope_direction.normalized, 0.5f, 0.0f);
-
-            // increment and apply sliding forces if in the right criteria.
-
-            if ((is_grounded_sphere && grounded_type == GameConstants.COLLIDER_TYPE_SLIDE)
-                || (is_grounded_sphere && grounded_slope_angle > SLIDING_ANGLE_MIN))
-            {
-                if (sliding_force < SLIDING_FORCE_MINIMUM)
-                    sliding_force = SLIDING_FORCE_MINIMUM;
-
-                sliding_force += Mathf.Max(
-                    SLIDING_FORCE_MINIMUM_CHANGE,
-                    grounded_slope_angle * SLIDING_FORCE_SLOPE_ANGLE_MULTIPLIER);
-
-                if (sliding_force > SLIDING_FORCE_MAXIMUM)
-                    sliding_force = SLIDING_FORCE_MAXIMUM;
-
-                p_rigid_body.AddForce(sliding_direction * sliding_force, ForceMode.Acceleration);
-            }
-        }
-    }
-
-    private void UpdatePlayerWater()
-    {
-        // Don't do anything if not in water.
-
-        if (!is_in_water)
-            return;
-
-        // Set the water flags.
-
-        is_partial_submerged = (this.transform.position.y + WATER_PARTIAL_SUBMERGED_OFFSET < water_y_level);
-        is_full_submerged = (this.transform.position.y + WATER_FULL_SUBMERGED_OFFSET < water_y_level);
-    }
-
-    private void UpdatePlayerJumping()
-    {
-        // Cancel the jump flag if descending.
-        if (p_rigid_body.velocity.y <= 0)
-            is_jumping = false;
-
-        // Cancel jumping if underwater.
-        if (is_full_submerged)
-            return;
-
-        // Check if able to jump.
-        is_able_to_jump = ((is_input_jumping && !was_input_jumping && is_grounded_sphere && !is_jumping) 
-            || (is_input_jumping && !is_grounded_sphere && is_partial_submerged && !is_jumping && p_rigid_body.velocity.y > 0f));
-
-        if (is_able_to_jump)
-        {
-            // Set jump flag.
-
-            is_jumping = true;
-
-            // Play the jump sound.
-
-            AudioSource.PlayClipAtPoint(audio_p_jump, this.transform.position);
-
-            // Set the jump vector.
-
-            Vector3 jump_direction = (is_sliding) ? grounded_slope_normal : Vector3.up;
-
-            // Starting a new jump, set the jump power back to full.
-
-            jump_power = JUMP_POWER_MAX;
-
-            // Zero out the y velocity before adding the jump force.
-            // This prevents bouncing.
-
-            if(is_sliding)
-                p_rigid_body.velocity = new Vector3(0, 0, 0);
             else
-                p_rigid_body.velocity = new Vector3(p_rigid_body.velocity.x, 0, p_rigid_body.velocity.z);
-
-            // Apply the jump force.
-
-            p_rigid_body.AddForce(jump_direction * JUMP_FORCE, ForceMode.VelocityChange);
-        }
-
-        // if airborne and still on the upward arc, add jump power
-        // as long as the button is pressed and there is jump power
-        // available to use.
-        // If the jump button is released at any point, the jump power
-        // is immediately set to 0.
-
-        if (!is_input_jumping)
-            jump_power = 0;
-
-        if (is_input_jumping && !is_grounded_sphere && p_rigid_body.velocity.y > 0)
-        {
-            // Set the jump vector.
-
-            Vector3 jump_direction = (is_sliding) ? grounded_slope_normal : Vector3.up;
-
-            if (jump_power > 0)
             {
-                p_rigid_body.AddForce(jump_direction * JUMP_FORCE_POWER, ForceMode.VelocityChange);
-                jump_power -= 0.1f;
+                player_sphere_collider.material.dynamicFriction = 1;
+                player_sphere_collider.material.staticFriction = 1;
             }
         }
-
-        // update the was-jumping flag, for edge detection.
-
-        was_input_jumping = is_input_jumping;
     }
 
-    private void UpdatePlayerSwimming()
-    {
-        if (!is_full_submerged)
-            return;
+    #region default
 
-        if(is_input_jumping)
+    private void UpdateDefaultPlayerState()
+    {
+        // enter jumping state if right criteria are met.
+
+        if(!was_input_jump && is_input_jump && is_spherecast_grounded)
         {
-            p_rigid_body.AddForce(Vector3.up * SWIM_FORCE, ForceMode.VelocityChange);
+            player_state = PlayerState.player_jump;
+            UpdateJumpBegin();
         }
+
+        if (is_partial_submerged)
+            player_state = PlayerState.player_water_default;
     }
 
-    private void UpdatePlayerAttack()
+    private void UpdateDefaultMovement()
     {
-        // exit attack if not in valid state.
-        if(is_full_submerged)
+        // input movement relative to camera.
+
+        var camera_relative_movement = Quaternion.Euler(0, camera_object.transform.eulerAngles.y, 0) * input_directional;
+
+        // camera movement relative to slope.
+
+        var slope_relative_movement = Vector3.ProjectOnPlane(camera_relative_movement, raycast_grounded_slope_normal);
+
+        // acceleration
+
+        float acceleration = is_spherecast_grounded ? ACCELERATION_GROUNDED : ACCELERATION_AIR;
+
+        // force
+
+        var force = slope_relative_movement * acceleration;
+
+        // do raycasts.
+
+        is_movement_hit = Physics.SphereCast
+            (this.transform.position, GROUNDED_SPHERECAST_RADIUS, slope_relative_movement, out movement_hit, MOVEMENT_SPHERECAST_DISTANCE);
+
+        Debug.DrawRay(transform.position, slope_relative_movement, Color.red);
+
+        // apply forces based on raycast hits.
+
+        if (is_movement_hit)
         {
-            is_attack = false;
-            attack_timer = 0.0f;
+            is_step_movement_hit = Physics.SphereCast
+                (this.transform.position + STEP_MOVEMENT_OFFSET, GROUNDED_SPHERECAST_RADIUS, slope_relative_movement, out step_movement_hit, MOVEMENT_SPHERECAST_DISTANCE);
+
+            if (!is_step_movement_hit)
+            {
+                // step obstace, move up and move directly ahead.
+
+                if (rigid_body.velocity.y < STEP_MAX_VELOCITY)
+                    rigid_body.AddForce(Vector3.up, ForceMode.VelocityChange);
+
+                rigid_body.AddForce(force, ForceMode.VelocityChange);
+
+                // force the sphere grounded status while moving up short steps.
+                is_spherecast_grounded = true;
+            }
+            else
+            {
+                // full obstacle, move on a plane to the collided surface.
+
+                force = Vector3.ProjectOnPlane(force, movement_hit.normal);
+                rigid_body.AddForce(force, ForceMode.VelocityChange);
+
+                Debug.DrawRay(transform.position, force, Color.blue);
+            }
+        }
+        else
+        {
+            // no obstace directly ahead.
+
+            rigid_body.AddForce(force, ForceMode.VelocityChange);
         }
 
-        // begin attack if in a valid state and not already attacking.
-        if (is_input_attack && !was_input_attack && !is_attack && !is_full_submerged)
-        {
-            is_attack = true;
-            attack_timer = 0.0f;
-
-            // Play the attack sound.
-
-            AudioSource.PlayClipAtPoint(audio_p_attack, this.transform.position);
-        }
-
-        // if attacking, run attack timer to complete attack.
-
-        if(is_attack)
-        {
-            attack_timer += ATTACK_TIMER_INCREMENT;
-
-            if (attack_timer >= 1)
-                is_attack = false;
-        }
-
-        // update the was-attacking flag, for edge detection.
-
-        was_input_attack = is_input_attack;
     }
 
-    private void UpdatePlayerMovementSpeed()
+    private void UpdateDefaultSpeed()
     {
+        // limit speed while in the default state.
+        // maximum speed depends on criteria.
+
         if (is_partial_submerged)
         {
-            if (p_rigid_body.velocity.magnitude > MAX_WATER_SPEED)
+            if (rigid_body.velocity.magnitude > MAX_SPEED_WATER)
             {
-                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, MAX_WATER_SPEED);
-            }
-
-            return;
-        }
-
-        if (is_grounded_sphere)
-        {
-            if (p_rigid_body.velocity.magnitude > MAX_GROUND_SPEED)
-            {
-                p_rigid_body.velocity = Vector3.ClampMagnitude(p_rigid_body.velocity, MAX_GROUND_SPEED);
+                rigid_body.velocity = Vector3.ClampMagnitude(rigid_body.velocity, MAX_SPEED_WATER);
             }
         }
         else
         {
-            Vector3 old_x_z = new Vector3(p_rigid_body.velocity.x, 0, p_rigid_body.velocity.z);
-            Vector3 old_y = new Vector3(0,p_rigid_body.velocity.y,0);
-
-            if(old_x_z.magnitude > MAX_GROUND_SPEED)
+            if (is_spherecast_grounded)
             {
-                
-                old_x_z = Vector3.ClampMagnitude(old_x_z, MAX_GROUND_SPEED);
-                p_rigid_body.velocity = old_x_z + old_y;
+                if (rigid_body.velocity.magnitude > MAX_SPEED_GROUNDED)
+                {
+                    rigid_body.velocity = Vector3.ClampMagnitude(rigid_body.velocity, MAX_SPEED_GROUNDED);
+                }
+            }
+            else
+            {
+                Vector3 old_x_z = new Vector3(rigid_body.velocity.x, 0, rigid_body.velocity.z);
+                Vector3 old_y = new Vector3(0, rigid_body.velocity.y, 0);
+
+                if (old_x_z.magnitude > MAX_SPEED_GROUNDED)
+                {
+
+                    old_x_z = Vector3.ClampMagnitude(old_x_z, MAX_SPEED_GROUNDED);
+                    rigid_body.velocity = old_x_z + old_y;
+                }
             }
         }
     }
 
-    private void UpdatePlayerFacingDirection()
+    #endregion
+    #region jump
+
+    private void UpdateJumpPlayerState()
     {
-        // don't update rotation if in not in a valid state.
+        // enter default state if right criteria are met.
 
-        if ((!is_grounded_sphere && !is_full_submerged)
-            || (is_attack))
-            return;
+        if (rigid_body.velocity.y <= 0)
+        {
+            player_state = PlayerState.player_default;
+        }
+    }
 
-        if (is_sliding)
-            facing_direction = Vector3.ProjectOnPlane(sliding_direction, Vector3.up);
+    private void UpdateJumpBegin()
+    {
+        // enter jump state.
+        // reset jump power.
+
+        jump_persist_energy = JUMP_PERSIST_ENERGY_MAX;
+
+        // add jumping force.
+
+        rigid_body.velocity = new Vector3
+            (rigid_body.velocity.x, 0, rigid_body.velocity.z);
+
+        rigid_body.AddForce(Vector3.up * JUMP_FORCE_MULTIPLIER, ForceMode.VelocityChange);
+    }
+
+    private void UpdateJumpJump()
+    {
+        // decrement the remaining jump persist energy.
+
+        jump_persist_energy -= 1;
+
+        if(is_input_jump && jump_persist_energy > 0)
+        {
+            // if the jump input is given, and persist energy > 0, add extra jump force.
+
+            rigid_body.AddForce(Vector3.up * JUMP_PERSIST_FORCE_MULTIPLIER, ForceMode.VelocityChange);
+        }
         else
-            facing_direction = Quaternion.Euler(0, p_camera.transform.eulerAngles.y, 0) * input_movement;
+        {
+            // if the jump input is let go, zero out the jump persist energy.
 
-        facing_direction_delta = Vector3.RotateTowards(p_render.forward, facing_direction, ANIM_SPEED_FACING_ROTATION, 0.0f);
-
-        // Move our position a step closer to the target.
-        p_render.rotation = Quaternion.LookRotation(facing_direction_delta);
+            jump_persist_energy = 0;
+        }
     }
 
-    
-
-
-    private void UpdatePlayerAnimationValues()
+    private void UpdateJumpMovement()
     {
-        p_animator.SetBool("anim_is_grounded", is_grounded_ray);
-        p_animator.SetBool("anim_is_moving", p_rigid_body.velocity.magnitude > 0.025f);
-        p_animator.SetBool("anim_is_rising", p_rigid_body.velocity.y > 0);
-        p_animator.SetBool("anim_is_sliding", is_sliding);
-        p_animator.SetBool("anim_is_full_submerged", is_full_submerged);
-        p_animator.SetBool("anim_is_attack", is_attack);
-        p_animator.SetFloat("anim_moving_speed", p_rigid_body.velocity.magnitude);
-        
+        // input movement relative to camera.
+
+        var camera_relative_movement = Quaternion.Euler(0, camera_object.transform.eulerAngles.y, 0) * input_directional;
+
+        // force
+
+        var force = camera_relative_movement * ACCELERATION_AIR;
+
+        // do raycasts.
+
+        is_movement_hit = Physics.SphereCast
+            (this.transform.position, GROUNDED_SPHERECAST_RADIUS, camera_relative_movement, out movement_hit, MOVEMENT_SPHERECAST_DISTANCE);
+
+        // apply forces based on raycast hits.
+
+        if (is_movement_hit)
+        {
+            is_step_movement_hit = Physics.SphereCast
+                (this.transform.position + STEP_MOVEMENT_OFFSET, GROUNDED_SPHERECAST_RADIUS, camera_relative_movement, out step_movement_hit, MOVEMENT_SPHERECAST_DISTANCE);
+
+            if (!is_step_movement_hit)
+            {
+                // step obstace, move up and move directly ahead.
+
+                if (rigid_body.velocity.y < STEP_MAX_VELOCITY)
+                    rigid_body.AddForce(Vector3.up, ForceMode.VelocityChange);
+
+                rigid_body.AddForce(force, ForceMode.VelocityChange);
+            }
+            else
+            {
+                // full obstacle, move on a plane to the collided surface.
+
+                force = Vector3.ProjectOnPlane(force, movement_hit.normal);
+                rigid_body.AddForce(force, ForceMode.VelocityChange);
+
+                Debug.DrawRay(transform.position, force, Color.blue);
+            }
+        }
+        else
+        {
+            // no obstace directly ahead.
+
+            rigid_body.AddForce(force, ForceMode.VelocityChange);
+        }
     }
 
-    // Trigger behaviour.
+    private void UpdateJumpSpeed()
+    {
+        Vector3 old_x_z = new Vector3(rigid_body.velocity.x, 0, rigid_body.velocity.z);
+        Vector3 old_y = new Vector3(0, rigid_body.velocity.y, 0);
+
+        if (old_x_z.magnitude > MAX_SPEED_GROUNDED)
+        {
+
+            old_x_z = Vector3.ClampMagnitude(old_x_z, MAX_SPEED_GROUNDED);
+            rigid_body.velocity = old_x_z + old_y;
+        }
+    }
+
+    #endregion
+    #region default water
+
+    private void UpdateDefaultWaterPlayerState()
+    {
+        if (!is_partial_submerged)
+            player_state = PlayerState.player_default;
+    }
+
+    private void UpdateDefaultWaterSpeed()
+    {
+        if (rigid_body.velocity.magnitude > MAX_SPEED_WATER)
+        {
+            rigid_body.velocity = Vector3.ClampMagnitude(rigid_body.velocity, MAX_SPEED_WATER);
+        }
+    }
+
+    #endregion
+    #region jump water
+
+    #endregion
+
+    // animator.
+
+    private void UpdateAnimator()
+    {
+        player_animator.SetInteger("anim_state", (int)player_state);
+        player_animator.SetBool("anim_is_grounded", is_spherecast_grounded);
+        player_animator.SetBool("anim_is_moving", rigid_body.velocity.magnitude > 0.2f);
+        player_animator.SetFloat("anim_horizontal_speed", is_input_directional ? rigid_body.velocity.magnitude : 0.0f);
+        player_animator.SetFloat("anim_vertical_speed", rigid_body.velocity.y);
+
+        // update player facing direction if in valid state.
+
+        if (player_state == PlayerState.player_default)
+        {
+
+            Vector3 facing_direction = Quaternion.Euler(0,   camera_object.transform.rotation.eulerAngles.y, 0) * input_directional;
+
+            var facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward, facing_direction, ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
+
+            // Move our position a step closer to the target.
+            player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
+        }
+    }
+
+    // collision.
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if(collision.gameObject.tag == GameConstants.TAG_MOVING_OBJECT)
+        {
+            moving_object_collision_list.Add(collision.gameObject);
+
+            is_colliding_moving_object = true;
+        }
+    }
+
+    private void OnCollisionExit(Collision collision)
+    {
+        if(moving_object_collision_list.Contains(collision.gameObject))
+        {
+            moving_object_collision_list.Remove(collision.gameObject);
+
+            if (moving_object_collision_list.Count == 0)
+            {
+                is_colliding_moving_object = false;
+            }
+        }
+    }
+
+    // trigger.
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.tag == GameConstants.TAG_WATER)
+        if (other.gameObject.tag == GameConstants.TAG_WATER)
         {
-            is_in_water = true;
+            water_object_collision_list.Add(other.gameObject);
+
+            is_colliding_water_object = true;
             water_y_level = other.transform.position.y + (other.bounds.size.y / 2);
         }
     }
 
     private void OnTriggerExit(Collider other)
     {
-        if (other.tag == GameConstants.TAG_WATER)
+        if (water_object_collision_list.Contains(other.gameObject))
         {
-            is_in_water = false;
-            is_partial_submerged = false;
-            is_full_submerged = false;
-            water_y_level = 0.0f;
+            water_object_collision_list.Remove(other.gameObject);
+
+            if (water_object_collision_list.Count == 0)
+            {
+                is_colliding_water_object = false;
+                water_y_level = 0.0f;
+            }
         }
     }
 
-    // Foostep interface.
-
-    public (bool, string, float, bool, bool) UpdateFootstepController()
+    public CameraAudioManager UpdateCameraAudioController()
     {
-        if (is_attack || is_sliding)
-        {
-            return (false,
-                grounded_type,
-                p_rigid_body.velocity.magnitude,
-                is_in_water,
-                is_partial_submerged);
-        }
-
-        return (is_grounded_ray, 
-            grounded_type, 
-            p_rigid_body.velocity.magnitude, 
-            is_in_water, is_partial_submerged);
+        camera_audio_manager.is_submerged = is_full_submerged;
+        return camera_audio_manager;
     }
 
-    // Camera audio interface.
-
-    public bool UpdateCameraAudioController()
+    public ActorFootstepManager UpdateFootstepController()
     {
-        return is_full_submerged;
+        footstep_manager.is_grounded = is_spherecast_grounded;
+        footstep_manager.ground_type = ground_type;
+        footstep_manager.velocity = rigid_body.velocity.magnitude;
+        footstep_manager.is_in_water = is_colliding_water_object;
+        footstep_manager.is_submerged = is_full_submerged;
+        return footstep_manager;
     }
 
-    // Splash interface.
-
-    public (float, bool, bool) UpdateSplashController()
+    public ActorSplashManager UpdateSplashController()
     {
-        return (water_y_level, is_in_water, is_full_submerged);
+        splash_manager.water_level = water_y_level;
+        splash_manager.is_in_water = is_colliding_water_object;
+        splash_manager.is_submerged = is_full_submerged;
+        return splash_manager;
     }
 
-    void OnGUI()
+    private void OnGUI()
     {
-        GUI.color = Color.red;
-        GUI.Label(DEBUG_RECTANGLE,
-            "movement hit: " + is_movement_hit.ToString()
-            + "\nupward slope similarity: " + movement_upward_slope_similarity.ToString()
-            + "\ndownward slope similarity: " + movement_downward_slope_similarity.ToString()
-            + "\nsliding force: " + sliding_force.ToString()
-            + "\nfloor angle: " + grounded_slope_angle
-            + "\nsliding resistance: " + sliding_resistance
-            + "\nis sliding: " + is_sliding
-            + "\ngrounded sphere: " + is_grounded_sphere
-            + "\ngrounded ray: " + is_grounded_ray
-            +"\nfriction: " + p_sphere_collider.material.dynamicFriction
-            +"\ndrag: " + p_rigid_body.drag);
+        GUI.color = Color.black;
+        GUI.Label(new Rect(0, 0, 600, 600),
+            "player_state: " + player_state
+            + "\npos " + rigid_body.position.x.ToString("0.00")
+            + "|" + rigid_body.position.y.ToString("0.00")
+            + "|" + rigid_body.position.z.ToString("0.00")
+            + "\nvel " + rigid_body.velocity.x.ToString("0.00")
+            + "|" + rigid_body.velocity.y.ToString("0.00")
+            + "|" + rigid_body.velocity.z.ToString("0.00")
+            + "\nray distance: " + raycast_hit_info.distance
+            + "\nray grounded: " + is_raycast_grounded
+            + "\nray angle: " + raycast_grounded_slope_angle
+            + "\nsphere distance: " + spherecast_hit_info.distance
+            + "\nsphere grounded: " + is_spherecast_grounded
+            + "\nmoving object collisions: " + moving_object_collision_list.Count
+            + "\nis colliding moving object: " + is_colliding_moving_object
+            + "\nwater trigger collisions: " + water_object_collision_list.Count
+            + "\nis colliding water trigger: " + is_colliding_water_object
+            + "\nwater y level: " + water_y_level
+            + "\nis partial submerged: " + is_partial_submerged
+            + "\nis full submerged: " + is_full_submerged);
+
     }
 }
