@@ -63,9 +63,11 @@ public class PlayerMovementController : MonoBehaviour
 
     // jump constants.
 
-    const float JUMP_FORCE_MULTIPLIER = 4.0f;
+    const float JUMP_FORCE_MULTIPLIER = 3.0f;
     const float JUMP_PERSIST_FORCE_MULTIPLIER = 0.4f;
     const int JUMP_PERSIST_ENERGY_MAX = 10;
+
+    const float WATER_JUMP_FORCE_MULTIPLIER = 2.5f;
 
     // water constants.
 
@@ -144,6 +146,10 @@ public class PlayerMovementController : MonoBehaviour
     bool is_full_submerged = false;
     float water_y_level = 0;
 
+    // audio variables.
+
+    AudioSource audio_source;
+
     // interface variables.
 
     CameraAudioManager camera_audio_manager;
@@ -163,6 +169,10 @@ public class PlayerMovementController : MonoBehaviour
         player_animator = this.GetComponent<Animator>();
         camera_object = GameObject.FindGameObjectWithTag(GameConstants.TAG_MAIN_CAMERA);
         player_render = GameObject.Find(PLAYER_RENDER_GAME_OBJECT_NAME);
+
+        // add components.
+
+        audio_source = this.gameObject.AddComponent<AudioSource>();
 
         // initialise interface.
 
@@ -186,6 +196,9 @@ public class PlayerMovementController : MonoBehaviour
         rigid_body.constraints = RigidbodyConstraints.FreezeRotation;
 
         // collider inits.
+
+        player_sphere_collider.material.bounceCombine = PhysicMaterialCombine.Minimum;
+        player_sphere_collider.material.bounciness = 0.0f;
 
         grounded_raycast_max_distance = player_sphere_collider.radius + GROUNDED_RAYCAST_ADDITIONAL_DISTANCE;
         grounded_spherecast_max_distance = GROUNDED_SPHERECAST_ADDITIONAL_DISTANCE;
@@ -217,7 +230,9 @@ public class PlayerMovementController : MonoBehaviour
             else if (player_state == PlayerState.player_jump)
                 UpdateJumpPlayerState();
             else if (player_state == PlayerState.player_water_default)
-                UpdateDefaultWaterPlayerState();
+                UpdateWaterDefaultPlayerState();
+            else if (player_state == PlayerState.player_water_jump)
+                UpdateWaterJumpPlayerState();
 
             // do state specific actions.
 
@@ -237,7 +252,14 @@ public class PlayerMovementController : MonoBehaviour
             if(player_state == PlayerState.player_water_default)
             {
                 UpdateDefaultMovement();
-                UpdateDefaultWaterSpeed();
+                UpdateWaterDefaultSpeed();
+            }
+            
+            if(player_state == PlayerState.player_water_jump)
+            {
+                UpdateJumpJump();
+                UpdateJumpMovement();
+                UpdateWaterJumpSpeed();
             }
 
             // update animator.
@@ -534,6 +556,11 @@ public class PlayerMovementController : MonoBehaviour
             (rigid_body.velocity.x, 0, rigid_body.velocity.z);
 
         rigid_body.AddForce(Vector3.up * JUMP_FORCE_MULTIPLIER, ForceMode.VelocityChange);
+
+        // player sound.
+
+        audio_source.clip = master.audio_controller.a_player_jump;
+        audio_source.Play();
     }
 
     private void UpdateJumpJump()
@@ -621,13 +648,19 @@ public class PlayerMovementController : MonoBehaviour
     #endregion
     #region default water
 
-    private void UpdateDefaultWaterPlayerState()
+    private void UpdateWaterDefaultPlayerState()
     {
+        if (!was_input_jump && is_input_jump)
+        {
+            player_state = PlayerState.player_water_jump;
+            UpdateWaterJumpBegin();
+        }
+
         if (!is_partial_submerged)
             player_state = PlayerState.player_default;
     }
 
-    private void UpdateDefaultWaterSpeed()
+    private void UpdateWaterDefaultSpeed()
     {
         if (rigid_body.velocity.magnitude > MAX_SPEED_WATER)
         {
@@ -637,6 +670,55 @@ public class PlayerMovementController : MonoBehaviour
 
     #endregion
     #region jump water
+
+    private void UpdateWaterJumpPlayerState()
+    {
+        if (rigid_body.velocity.y <= 0)
+        {
+            player_state = PlayerState.player_water_default;
+        }
+
+        if (!is_partial_submerged)
+            player_state = PlayerState.player_jump;
+    }
+
+    private void UpdateWaterJumpBegin()
+    {
+        // enter jump state.
+        // reset jump power.
+
+        jump_persist_energy = JUMP_PERSIST_ENERGY_MAX;
+
+        // add jumping force.
+
+        rigid_body.velocity = new Vector3
+            (rigid_body.velocity.x, 0, rigid_body.velocity.z);
+
+        rigid_body.AddForce(Vector3.up * WATER_JUMP_FORCE_MULTIPLIER, ForceMode.VelocityChange);
+
+        // player sound.
+
+        audio_source.clip = master.audio_controller.a_player_water_jump;
+        audio_source.Play();
+    }
+
+    private void UpdateWaterJumpSpeed()
+    {
+        Vector3 old_x_z = new Vector3(rigid_body.velocity.x, 0, rigid_body.velocity.z);
+        Vector3 old_y = new Vector3(0, rigid_body.velocity.y, 0);
+
+        if (old_x_z.magnitude > MAX_SPEED_WATER)
+        {
+            old_x_z = Vector3.ClampMagnitude(old_x_z, MAX_SPEED_WATER);
+        }
+
+        if(old_y.y < -MAX_SPEED_WATER)
+        {
+            old_y = Vector3.ClampMagnitude(old_y, MAX_SPEED_WATER);
+        }
+
+        rigid_body.velocity = old_x_z + old_y;
+    }
 
     #endregion
 
@@ -652,7 +734,9 @@ public class PlayerMovementController : MonoBehaviour
 
         // update player facing direction if in valid state.
 
-        if (player_state == PlayerState.player_default)
+        if (player_state == PlayerState.player_default
+            || player_state == PlayerState.player_water_default
+            || player_state == PlayerState.player_water_jump)
         {
 
             Vector3 facing_direction = Quaternion.Euler(0,   camera_object.transform.rotation.eulerAngles.y, 0) * input_directional;
@@ -743,7 +827,7 @@ public class PlayerMovementController : MonoBehaviour
     private void OnGUI()
     {
         GUI.color = Color.black;
-        GUI.Label(new Rect(0, 0, 600, 600),
+        GUI.Label(new Rect(64, 0, 600, 600),
             "player_state: " + player_state
             + "\npos " + rigid_body.position.x.ToString("0.00")
             + "|" + rigid_body.position.y.ToString("0.00")
