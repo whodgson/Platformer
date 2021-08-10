@@ -11,12 +11,18 @@ public class GameAudioController : MonoBehaviour
     public AudioClip a_player_jump;
     public AudioClip a_player_water_jump;
     public AudioClip a_player_splash;
+    public AudioClip a_player_slide;
+    public AudioClip a_player_slide_loop;
+    public AudioClip a_player_dive;
 
     private void Awake()
     {
         a_player_jump = Resources.Load("sound/player/sfx_player_jump") as AudioClip;
         a_player_water_jump = Resources.Load("sound/player/sfx_player_water_jump") as AudioClip;
         a_player_splash = Resources.Load("sound/player/sfx_player_splash") as AudioClip;
+        a_player_slide  = Resources.Load("sound/player/sfx_player_slide") as AudioClip;
+        a_player_slide_loop = Resources.Load("sound/player/sfx_player_slide_loop") as AudioClip;
+        a_player_dive = Resources.Load("sound/player/sfx_player_dive") as AudioClip;
 
     }
 }

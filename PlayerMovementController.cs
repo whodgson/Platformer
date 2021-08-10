@@ -15,7 +15,9 @@ public class PlayerMovementController : MonoBehaviour
         player_default,
         player_jump,
         player_water_default,
-        player_water_jump
+        player_water_jump,
+        player_slide,
+        player_dive
     }
 
     // input constants.
@@ -41,9 +43,12 @@ public class PlayerMovementController : MonoBehaviour
 
     const float ACCELERATION_GROUNDED = 0.5f;
     const float ACCELERATION_AIR = 0.2f;
-
+    
     const float MAX_SPEED_GROUNDED = 3.0f;
     const float MAX_SPEED_WATER = 2.0f;
+
+    const float MAX_SPEED_SLIDE = 6.0f;
+    const float MAX_SPEED_DIVE = 7.0f;
 
     // grounded constants.
 
@@ -68,6 +73,26 @@ public class PlayerMovementController : MonoBehaviour
     const int JUMP_PERSIST_ENERGY_MAX = 10;
 
     const float WATER_JUMP_FORCE_MULTIPLIER = 2.5f;
+    const float MINIMUM_WATER_JUMP_Y_SPEED = -1f;
+
+    const int UPDATE_COUNT_JUMP_RECOVERY_MIN = 10;
+
+    // slide constants.
+
+    const float SLIDE_FORCE_ANGLE_MIN = 3f;                         // minimum angle to adjust slide direction to slope.
+    const float SLIDE_ANGLE_RECOVERY_MAX = 30f;                     // maximum angle to recover from slide.
+    const float SLIDE_SPEED_RECOVERY_MAX = 0.25f;                   // maximum speed to recover from slide.
+    const float SLIDE_ANGLE_MIN = 50f;                              // minimum angle to start sliding
+    const float SLIDE_RESISTANCE_GROUND_ANGLE_MULTIPLIER = 0.001f;  // multiplier for ground angle to subtract from resistance.
+    const float SLIDE_RESISTANCE_MAX = 1.0f;                        // maximum slide resistance.
+    const float SLIDE_RESISTANCE_RECOVERY = 0.05f;                  // slide resistance recovery amount
+    const float SLIDE_FORCE_MULIPLIER = 1f;                         // multiplier to slide vector.
+    const float SLIDE_DIRECTION_ROTATION_MULTIPLIER = 0.5f;         // how fast the slide direction matches current slope.
+
+    // dive constants.
+
+    const float DIVE_MIN_INPUT_DIRECTIONAL_MAGNITUDE = 1.0f;        // minimum input magnitude to influence dive direction.
+    const int UPDATE_COUNT_DIVE_RECOVERY_MIN = 30;                  // minimum update count to recover from dive.
 
     // water constants.
 
@@ -81,6 +106,16 @@ public class PlayerMovementController : MonoBehaviour
     // state variables.
 
     PlayerState player_state = PlayerState.player_default;
+    PlayerState player_state_previous = PlayerState.player_default;
+
+    // update count variables.
+
+    int update_count_default = 0;
+    int update_count_jump = 0;
+    int update_count_water_default = 0;
+    int update_count_water_jump = 0;
+    int update_count_slide = 0;
+    int update_count_dive = 0;
 
     // input variables.
 
@@ -88,8 +123,14 @@ public class PlayerMovementController : MonoBehaviour
     bool is_input_directional = false;
     bool was_input_directional = false;
 
+    bool is_input_left = false;
+    bool is_input_right = false;
+
     bool is_input_jump = false;
     bool was_input_jump = false;
+
+    bool is_input_attack = false;
+    bool was_input_attack = false;
 
     // component variables.
 
@@ -133,6 +174,18 @@ public class PlayerMovementController : MonoBehaviour
 
     int jump_persist_energy = 0;
 
+    // slide variables.
+
+    float slide_resistance = 1.0f;
+    float slide_force = 1.0f;
+    Vector3 slide_direction = Vector3.zero;
+
+    bool is_slide_hit = false;
+
+    // dive variables.
+
+    Vector3 dive_direction = Vector3.zero;
+
     // moving object variables.
 
     List<GameObject> moving_object_collision_list = new List<GameObject>();
@@ -146,9 +199,15 @@ public class PlayerMovementController : MonoBehaviour
     bool is_full_submerged = false;
     float water_y_level = 0;
 
+    // animator variables.
+
+    Vector3 facing_direction = Vector3.zero;
+    Vector3 facing_direction_delta = Vector3.zero;
+
     // audio variables.
 
     AudioSource audio_source;
+    AudioSource audio_source_loop;
 
     // interface variables.
 
@@ -173,6 +232,9 @@ public class PlayerMovementController : MonoBehaviour
         // add components.
 
         audio_source = this.gameObject.AddComponent<AudioSource>();
+
+        audio_source_loop = this.gameObject.AddComponent<AudioSource>();
+        audio_source_loop.loop = true;
 
         // initialise interface.
 
@@ -233,33 +295,46 @@ public class PlayerMovementController : MonoBehaviour
                 UpdateWaterDefaultPlayerState();
             else if (player_state == PlayerState.player_water_jump)
                 UpdateWaterJumpPlayerState();
+            else if (player_state == PlayerState.player_slide)
+                UpdateSlidePlayerState();
+            else if (player_state == PlayerState.player_dive)
+                UpdateDivePlayerState();
 
             // do state specific actions.
 
             if (player_state == PlayerState.player_default)
             {
                 UpdateDefaultMovement();
+                UpdateDefaultSlide();
                 UpdateDefaultSpeed();
             }
-
-            if(player_state == PlayerState.player_jump)
+            else if(player_state == PlayerState.player_jump)
             {
                 UpdateJumpJump();
                 UpdateJumpMovement();
                 UpdateJumpSpeed();
             }
-
-            if(player_state == PlayerState.player_water_default)
+            else if(player_state == PlayerState.player_water_default)
             {
                 UpdateDefaultMovement();
                 UpdateWaterDefaultSpeed();
             }
-            
-            if(player_state == PlayerState.player_water_jump)
+            else if(player_state == PlayerState.player_water_jump)
             {
                 UpdateJumpJump();
                 UpdateJumpMovement();
                 UpdateWaterJumpSpeed();
+            }
+            else if(player_state == PlayerState.player_slide)
+            {
+                UpdateSlideMovement();
+                UpdateSlideLateralMovement();
+                UpdateSlideSlide();
+                UpdateSlideSpeed();
+            }
+            else if(player_state == PlayerState.player_dive)
+            {
+                UpdateDiveSpeed();
             }
 
             // update animator.
@@ -281,6 +356,7 @@ public class PlayerMovementController : MonoBehaviour
 
         was_input_directional = is_input_directional;
         was_input_jump = is_input_jump;
+        was_input_attack = is_input_attack;
 
         // get input from input mapper.
 
@@ -295,9 +371,13 @@ public class PlayerMovementController : MonoBehaviour
         input_directional = input;
         is_input_directional = input_directional.magnitude > INPUT_DIRECTIONAL_THRESHOLD;
 
+        is_input_left = master.input_controller.action_horizontal.ReadValue<float>() < -0.5f;
+        is_input_right = master.input_controller.action_horizontal.ReadValue<float>() > 0.5f;
+
         // get button inputs.
 
         is_input_jump = master.input_controller.action_positive.ReadValue<float>() >= INPUT_BUTTON_THRESHOLD;
+        is_input_attack = master.input_controller.action_interact.ReadValue<float>() >= INPUT_BUTTON_THRESHOLD;
     }
 
     private void UpdateWaterStatus()
@@ -391,6 +471,19 @@ public class PlayerMovementController : MonoBehaviour
 
     private void UpdateDragAndFriction()
     {
+        // state specific drag.
+
+        if(player_state == PlayerState.player_jump
+            ||player_state == PlayerState.player_slide
+            || player_state == PlayerState.player_dive)
+        {
+            rigid_body.drag = DRAG_AIR;
+            player_sphere_collider.material.dynamicFriction = 0f;
+            player_sphere_collider.material.staticFriction = 0f;
+            player_sphere_collider.material.frictionCombine = PhysicMaterialCombine.Minimum;
+            return;
+        }
+
         // update based on circumstances.
 
         rigid_body.drag = is_raycast_grounded ? DRAG_GROUNDED : DRAG_AIR;
@@ -413,22 +506,54 @@ public class PlayerMovementController : MonoBehaviour
                 player_sphere_collider.material.staticFriction = 1;
             }
         }
+
+        // change physics combine mode.
+
+        player_sphere_collider.material.frictionCombine = PhysicMaterialCombine.Average;
     }
 
     #region default
 
     private void UpdateDefaultPlayerState()
     {
+        update_count_default++;
+
         // enter jumping state if right criteria are met.
 
         if(!was_input_jump && is_input_jump && is_spherecast_grounded)
         {
-            player_state = PlayerState.player_jump;
-            UpdateJumpBegin();
+            ChangePlayerState(PlayerState.player_jump);
+            return;
         }
 
         if (is_partial_submerged)
-            player_state = PlayerState.player_water_default;
+        {
+            ChangePlayerState(PlayerState.player_water_default);
+            return;
+        }
+
+        if (slide_resistance <= 0.0f)
+        {
+            ChangePlayerState(PlayerState.player_slide);
+            return;
+        }
+
+        // exit to diving state, if the previous state
+        // was jump, attack is pressed, and in air.
+
+        if (!was_input_attack 
+            && is_input_attack
+            && player_state_previous == PlayerState.player_jump
+            && !is_spherecast_grounded)
+        {
+            ChangePlayerState(PlayerState.player_dive);
+            return;
+        }
+    }
+
+    private void UpdateDefaultBegin()
+    {
+        update_count_default = 0;
     }
 
     private void UpdateDefaultMovement()
@@ -460,8 +585,13 @@ public class PlayerMovementController : MonoBehaviour
 
         if (is_movement_hit)
         {
+            // initial step cast.
             is_step_movement_hit = Physics.SphereCast
                 (this.transform.position + STEP_MOVEMENT_OFFSET, GROUNDED_SPHERECAST_RADIUS, slope_relative_movement, out step_movement_hit, MOVEMENT_SPHERECAST_DISTANCE);
+
+            // addition step check for ceilings.
+            if (Physics.CheckSphere(this.transform.position + STEP_MOVEMENT_OFFSET, GROUNDED_SPHERECAST_RADIUS, GameConstants.LAYER_MASK_ALL_BUT_PLAYER))
+                is_step_movement_hit = true;
 
             if (!is_step_movement_hit)
             {
@@ -474,6 +604,8 @@ public class PlayerMovementController : MonoBehaviour
 
                 // force the sphere grounded status while moving up short steps.
                 is_spherecast_grounded = true;
+
+                Debug.DrawRay(this.transform.position, Vector3.up, Color.magenta);
             }
             else
             {
@@ -490,8 +622,29 @@ public class PlayerMovementController : MonoBehaviour
             // no obstace directly ahead.
 
             rigid_body.AddForce(force, ForceMode.VelocityChange);
+
+            Debug.DrawRay(this.transform.position, Vector3.up, Color.green);
         }
 
+    }
+
+    private void UpdateDefaultSlide()
+    {
+        // move towards the sliding state
+        // if the right criteria are met.
+
+        if(raycast_grounded_slope_angle > SLIDE_ANGLE_MIN 
+            || ground_type == GameConstants.GroundType.ground_slide)
+        {
+            // reduce the slide resistance
+            slide_resistance -= (raycast_grounded_slope_angle * SLIDE_RESISTANCE_GROUND_ANGLE_MULTIPLIER);
+        }
+        else
+        {
+            slide_resistance = SLIDE_RESISTANCE_MAX;
+        }
+
+        slide_resistance = Mathf.Clamp(slide_resistance, 0.0f, SLIDE_RESISTANCE_MAX);
     }
 
     private void UpdateDefaultSpeed()
@@ -535,16 +688,48 @@ public class PlayerMovementController : MonoBehaviour
 
     private void UpdateJumpPlayerState()
     {
+        // increment the update count.
+
+        update_count_jump++;
+
         // enter default state if right criteria are met.
 
         if (rigid_body.velocity.y <= 0)
         {
-            player_state = PlayerState.player_default;
+            ChangePlayerState(PlayerState.player_default);
+            return;
+        }
+
+        // enter default state if grounded.
+
+        if(update_count_jump >= UPDATE_COUNT_JUMP_RECOVERY_MIN
+            && (is_raycast_grounded || is_spherecast_grounded))
+        {
+            ChangePlayerState(PlayerState.player_default);
+            return;
+        }
+
+        // enter dive state.
+
+        if(!was_input_attack && is_input_attack)
+        {
+            ChangePlayerState(PlayerState.player_dive);
+            return;
         }
     }
 
     private void UpdateJumpBegin()
     {
+        // reset the update count.
+
+        update_count_jump = 0;
+
+        // if coming from the water jump state,
+        // don't add any additional force.
+
+        if (player_state_previous == PlayerState.player_water_jump)
+            return;
+
         // enter jump state.
         // reset jump power.
 
@@ -602,8 +787,13 @@ public class PlayerMovementController : MonoBehaviour
 
         if (is_movement_hit)
         {
+            // initial step cast.
             is_step_movement_hit = Physics.SphereCast
                 (this.transform.position + STEP_MOVEMENT_OFFSET, GROUNDED_SPHERECAST_RADIUS, camera_relative_movement, out step_movement_hit, MOVEMENT_SPHERECAST_DISTANCE);
+
+            // second step check for ceilings.
+            if (Physics.CheckSphere(this.transform.position + STEP_MOVEMENT_OFFSET, GROUNDED_SPHERECAST_RADIUS, GameConstants.LAYER_MASK_ALL_BUT_PLAYER))
+                is_step_movement_hit = true;
 
             if (!is_step_movement_hit)
             {
@@ -650,14 +840,32 @@ public class PlayerMovementController : MonoBehaviour
 
     private void UpdateWaterDefaultPlayerState()
     {
-        if (!was_input_jump && is_input_jump)
+        update_count_water_default++;
+
+        // can swim if pressing jump 
+        // and grounded, or descending in water.
+
+        if 
+        (
+            !was_input_jump 
+            && is_input_jump
+            && (is_spherecast_grounded || rigid_body.velocity.y <= MINIMUM_WATER_JUMP_Y_SPEED)
+        )
         {
-            player_state = PlayerState.player_water_jump;
-            UpdateWaterJumpBegin();
+            ChangePlayerState(PlayerState.player_water_jump);
+            return;
         }
 
         if (!is_partial_submerged)
-            player_state = PlayerState.player_default;
+        {
+            ChangePlayerState(PlayerState.player_default);
+            return;
+        }
+    }
+
+    private void UpdateWaterDefaultBegin()
+    {
+        update_count_water_default = 0;
     }
 
     private void UpdateWaterDefaultSpeed()
@@ -673,17 +881,25 @@ public class PlayerMovementController : MonoBehaviour
 
     private void UpdateWaterJumpPlayerState()
     {
+        update_count_water_jump++;
+
         if (rigid_body.velocity.y <= 0)
         {
-            player_state = PlayerState.player_water_default;
+            ChangePlayerState(PlayerState.player_water_default);
+            return;
         }
 
         if (!is_partial_submerged)
-            player_state = PlayerState.player_jump;
+        {
+            ChangePlayerState(PlayerState.player_jump);
+            return;
+        }
     }
 
     private void UpdateWaterJumpBegin()
     {
+        update_count_water_jump = 0;
+
         // enter jump state.
         // reset jump power.
 
@@ -721,6 +937,208 @@ public class PlayerMovementController : MonoBehaviour
     }
 
     #endregion
+    #region slide
+
+    private void UpdateSlidePlayerState()
+    {
+        update_count_slide++;
+
+        // exit if entering water.
+        if (is_partial_submerged)
+        {
+            ChangePlayerState(PlayerState.player_water_default);
+            return;
+        }
+
+        // exit if slide resistance recovered.
+        if (slide_resistance >= SLIDE_RESISTANCE_MAX)
+        {
+            ChangePlayerState(PlayerState.player_default);
+            return;
+        }
+
+        // exit if fully in air.
+        if(!is_spherecast_grounded && !is_raycast_grounded)
+        {
+            ChangePlayerState(PlayerState.player_default);
+            return;
+        }
+
+        // exit if slow enough to jump.
+        if (!was_input_jump 
+            && is_input_jump 
+            && is_spherecast_grounded
+            && rigid_body.velocity.magnitude < SLIDE_SPEED_RECOVERY_MAX)
+        {
+            ChangePlayerState(PlayerState.player_jump);
+            return;
+        }
+    }
+
+    private void UpdateSlideBegin()
+    {
+        update_count_slide = 0;
+
+        slide_force = SLIDE_FORCE_MULIPLIER;
+        slide_direction = raycast_grounded_slope_direction;
+        rigid_body.AddForce(raycast_grounded_slope_direction * slide_force, ForceMode.VelocityChange);
+
+        audio_source.clip = master.audio_controller.a_player_slide;
+        audio_source.Play();
+    }
+
+    private void UpdateSlideMovement()
+    {
+        // slide forward.
+
+        if (raycast_grounded_slope_angle >= SLIDE_FORCE_ANGLE_MIN)
+        {
+            // update the slide vector.
+
+            slide_direction = Vector3.RotateTowards
+                (slide_direction, raycast_grounded_slope_direction.normalized, SLIDE_DIRECTION_ROTATION_MULTIPLIER, 0.0f);
+
+            // add the regular slide force, if no obstacle.
+
+            is_slide_hit = Physics.SphereCast
+                (this.transform.position, GROUNDED_SPHERECAST_RADIUS, slide_direction, out movement_hit, MOVEMENT_SPHERECAST_DISTANCE);
+
+
+            if (!is_slide_hit)
+            {
+                rigid_body.AddForce(slide_direction * SLIDE_FORCE_MULIPLIER, ForceMode.VelocityChange);
+            }
+        }
+    }
+
+    private void UpdateSlideLateralMovement()
+    {
+        // add sideways slide force.
+
+        if (raycast_grounded_slope_angle >= SLIDE_FORCE_ANGLE_MIN)
+        {
+            // input movement relative to camera.
+
+            var camera_relative_movement = Quaternion.Euler(0, camera_object.transform.eulerAngles.y, 0) * input_directional;
+
+            // camera movement relative to slope.
+
+            var slope_relative_movement = Vector3.ProjectOnPlane(camera_relative_movement, raycast_grounded_slope_normal);
+
+            // project movement relative to plane of slide direction.
+
+            slope_relative_movement = Vector3.ProjectOnPlane(slope_relative_movement, slide_direction);
+
+            //if(is_input_left)
+            //{
+            //    slope_relative_movement = Vector3.Cross(slide_direction, Vector3.up);
+            //}
+
+            //if(is_input_right)
+            //{
+            //    slope_relative_movement = -Vector3.Cross(slide_direction, Vector3.up);
+            //}
+
+            //Debug.DrawRay(this.transform.position, slope_relative_movement, Color.white);
+
+            // force.
+
+            var force = slope_relative_movement * ACCELERATION_AIR;
+
+            // do raycasts.
+
+            is_movement_hit = Physics.SphereCast
+                (this.transform.position, GROUNDED_SPHERECAST_RADIUS, slope_relative_movement, out movement_hit, MOVEMENT_SPHERECAST_DISTANCE);
+
+            Debug.DrawRay(transform.position, slope_relative_movement, Color.red);
+
+            // apply forces based on raycast hits.
+
+            if (!is_movement_hit)
+            {
+                    rigid_body.AddForce(force, ForceMode.VelocityChange);
+            }
+        }
+    }
+
+    private void UpdateSlideSlide()
+    {
+        // recover, or continue sliding
+        // based on current situation.
+
+        if (raycast_grounded_slope_angle < SLIDE_ANGLE_RECOVERY_MAX
+            && ground_type != GameConstants.GroundType.ground_slide
+            && is_spherecast_grounded)
+        {
+            // increase the slide resistance
+            slide_resistance += SLIDE_RESISTANCE_RECOVERY;
+        }
+        else
+        {
+            slide_resistance = 0.0f;
+        }
+
+        slide_resistance = Mathf.Clamp(slide_resistance, 0.0f, SLIDE_RESISTANCE_MAX);
+    }
+
+    private void UpdateSlideSpeed()
+    {
+        if (rigid_body.velocity.magnitude > MAX_SPEED_SLIDE)
+        {
+            rigid_body.velocity = Vector3.ClampMagnitude(rigid_body.velocity, MAX_SPEED_GROUNDED);
+        }
+    }
+
+    #endregion
+    #region dive
+
+    private void UpdateDivePlayerState()
+    {
+        update_count_dive++;
+
+        if(update_count_dive >= UPDATE_COUNT_DIVE_RECOVERY_MIN)
+        {
+            ChangePlayerState(PlayerState.player_default);
+            return;
+        }
+    }
+
+    private void UpdateDiveBegin()
+    {
+        update_count_dive = 0;
+
+        audio_source.clip = master.audio_controller.a_player_dive;
+        audio_source.Play();
+
+        if (input_directional.magnitude >= DIVE_MIN_INPUT_DIRECTIONAL_MAGNITUDE)
+            dive_direction = Quaternion.Euler(0, camera_object.transform.eulerAngles.y, 0) * input_directional.normalized;
+        else
+            dive_direction = player_render.transform.forward.normalized;
+
+
+        // zero out vertical velocity and add diving force.
+
+        rigid_body.velocity = new Vector3
+            (rigid_body.velocity.x, 0, rigid_body.velocity.z);
+
+        rigid_body.AddForce(Vector3.up * JUMP_FORCE_MULTIPLIER, ForceMode.VelocityChange);
+        rigid_body.AddForce(dive_direction * (JUMP_FORCE_MULTIPLIER * 2), ForceMode.VelocityChange);
+    }
+
+    private void UpdateDiveSpeed()
+    {
+        Vector3 old_x_z = new Vector3(rigid_body.velocity.x, 0, rigid_body.velocity.z);
+        Vector3 old_y = new Vector3(0, rigid_body.velocity.y, 0);
+
+        if (old_x_z.magnitude > MAX_SPEED_DIVE)
+        {
+
+            old_x_z = Vector3.ClampMagnitude(old_x_z, MAX_SPEED_DIVE);
+            rigid_body.velocity = old_x_z + old_y;
+        }
+    }
+
+    #endregion
 
     // animator.
 
@@ -731,6 +1149,8 @@ public class PlayerMovementController : MonoBehaviour
         player_animator.SetBool("anim_is_moving", rigid_body.velocity.magnitude > 0.2f);
         player_animator.SetFloat("anim_horizontal_speed", is_input_directional ? rigid_body.velocity.magnitude : 0.0f);
         player_animator.SetFloat("anim_vertical_speed", rigid_body.velocity.y);
+        player_animator.SetBool("anim_is_input_right", input_directional.x > 0.5);
+        player_animator.SetBool("anim_is_input_left", input_directional.x < -0.5);
 
         // update player facing direction if in valid state.
 
@@ -739,9 +1159,29 @@ public class PlayerMovementController : MonoBehaviour
             || player_state == PlayerState.player_water_jump)
         {
 
-            Vector3 facing_direction = Quaternion.Euler(0,   camera_object.transform.rotation.eulerAngles.y, 0) * input_directional;
+            facing_direction = Quaternion.Euler(0,   camera_object.transform.rotation.eulerAngles.y, 0) * input_directional;
 
-            var facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward, facing_direction, ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
+            facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward, facing_direction, ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
+
+            // Move our position a step closer to the target.
+            player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
+        }
+        else if(player_state == PlayerState.player_slide)
+        {
+            facing_direction = new Vector3(slide_direction.x, 0, slide_direction.z);
+
+            facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward, facing_direction, ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
+
+            // Move our position a step closer to the target.
+            player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
+        }
+        else if(player_state == PlayerState.player_dive)
+        {
+            facing_direction.x = dive_direction.x;
+            facing_direction.y = 0;
+            facing_direction.z = dive_direction.z;
+
+            facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward, facing_direction, ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
 
             // Move our position a step closer to the target.
             player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
@@ -771,6 +1211,27 @@ public class PlayerMovementController : MonoBehaviour
                 is_colliding_moving_object = false;
             }
         }
+    }
+
+    // state change.
+
+    private void ChangePlayerState(PlayerState new_state)
+    {
+        player_state_previous = player_state;
+        player_state = new_state;
+
+        if (player_state == PlayerState.player_default)
+            UpdateDefaultBegin();
+        else if (player_state == PlayerState.player_jump)
+            UpdateJumpBegin();
+        else if (player_state == PlayerState.player_water_default)
+            UpdateWaterDefaultBegin();
+        else if (player_state == PlayerState.player_water_jump)
+            UpdateWaterJumpBegin();
+        else if (player_state == PlayerState.player_slide)
+            UpdateSlideBegin();
+        else if (player_state == PlayerState.player_dive)
+            UpdateDiveBegin();
     }
 
     // trigger.
@@ -827,7 +1288,7 @@ public class PlayerMovementController : MonoBehaviour
     private void OnGUI()
     {
         GUI.color = Color.black;
-        GUI.Label(new Rect(64, 0, 600, 600),
+        GUI.Label(new Rect(64, Screen.height-600, 600, 600),
             "player_state: " + player_state
             + "\npos " + rigid_body.position.x.ToString("0.00")
             + "|" + rigid_body.position.y.ToString("0.00")
@@ -846,7 +1307,7 @@ public class PlayerMovementController : MonoBehaviour
             + "\nis colliding water trigger: " + is_colliding_water_object
             + "\nwater y level: " + water_y_level
             + "\nis partial submerged: " + is_partial_submerged
-            + "\nis full submerged: " + is_full_submerged);
-
+            + "\nis full submerged: " + is_full_submerged
+            + "\nslide resistance: " + slide_resistance);
     }
 }

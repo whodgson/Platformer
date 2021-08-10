@@ -18,6 +18,8 @@ namespace Assets.script
 
         public const string DIRECTORY_FONT = "font/game_font";
 
+        public const int LAYER_MASK_ALL_BUT_PLAYER = ~(1 << 8);
+
         public enum ActorTag
         {
             actor_default,
@@ -32,7 +34,10 @@ namespace Assets.script
             ground_grass,
             ground_sand,
             ground_stone,
-            ground_wood
+            ground_wood,
+            ground_mud,
+            ground_metal,
+            ground_foliage,
         }
 
     }
