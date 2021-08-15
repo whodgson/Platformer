@@ -85,7 +85,8 @@ public class GameDataController : MonoBehaviour
         save_data.load_player_start_transform_name = master.load_level_controller.load_player_start_transform_name;
         save_data.load_camera_start_transform_name = master.load_level_controller.load_camera_start_transform_name;
 
-        save_data.player_lives = master.player_controller.player_lives;
+        save_data.player_health = master.player_controller.player_health;
+        save_data.player_max_health = master.player_controller.player_max_health;
 
         string json_data = JsonUtility.ToJson(save_data, true);
         File.WriteAllText(json_save_path, json_data);
@@ -100,7 +101,8 @@ public class GameDataController : MonoBehaviour
         this.game_var_string = save_data.game_var_string;
         this.game_var_int = save_data.game_var_int;
 
-        master.player_controller.player_lives = save_data.player_lives;
+        master.player_controller.player_health = save_data.player_health;
+        master.player_controller.player_max_health = save_data.player_max_health;
 
         master.load_level_controller.StartLoadLevel(
             save_data.load_scene_name, 
@@ -120,5 +122,6 @@ public class SaveData
     public string load_player_start_transform_name;
     public string load_camera_start_transform_name;
 
-    public int player_lives;
+    public int player_health;
+    public int player_max_health;
 }

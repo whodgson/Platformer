@@ -12,6 +12,7 @@ namespace Assets.script
         public const string TAG_PLAYER = "Player";
         public const string TAG_WATER =  "water";
         public const string TAG_MOVING_OBJECT = "moving_object";
+        public const string TAG_DAMAGE_OBJECT = "damage_object";
 
         public const string TAG_PLAYER_CAMERA_TARGET = "player_camera_target";
         public const string TAG_MAIN_CAMERA = "MainCamera";
@@ -19,6 +20,25 @@ namespace Assets.script
         public const string DIRECTORY_FONT = "font/game_font";
 
         public const int LAYER_MASK_ALL_BUT_PLAYER = ~(1 << 8);
+
+        public enum DamageSourceType
+        {
+            type_static,
+            type_actor
+        }
+
+        public enum DamageEffectType
+        {
+            type_default
+        }
+
+
+        public enum DamageDirectionType
+        {
+            type_up,
+            type_down,
+            type_push
+        }
 
         public enum ActorTag
         {

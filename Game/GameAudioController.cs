@@ -14,6 +14,7 @@ public class GameAudioController : MonoBehaviour
     public AudioClip a_player_slide;
     public AudioClip a_player_slide_loop;
     public AudioClip a_player_dive;
+    public AudioClip a_player_hurt_default;
 
     private void Awake()
     {
@@ -23,6 +24,7 @@ public class GameAudioController : MonoBehaviour
         a_player_slide  = Resources.Load("sound/player/sfx_player_slide") as AudioClip;
         a_player_slide_loop = Resources.Load("sound/player/sfx_player_slide_loop") as AudioClip;
         a_player_dive = Resources.Load("sound/player/sfx_player_dive") as AudioClip;
+        a_player_hurt_default = Resources.Load("sound/player/sfx_player_hurt_default") as AudioClip;
 
     }
 }

@@ -6,6 +6,13 @@ using UnityEngine.InputSystem;
 
 public class GamePlayerController : MonoBehaviour
 {
+    // ui constants.
+
+    const float X_ORIGIN_HEALTH = 8;
+    const float Y_ORIGIN_HEALTH = 8;
+    const float X_OFFSET_HEALTH = 50;
+    const float Y_OFFSET_HEALTH = 32;
+
     public GameMasterController master;
 
     private GUIStyle ui_style;
@@ -13,16 +20,13 @@ public class GamePlayerController : MonoBehaviour
 
     private Font ui_font;
 
-    private Rect player_lives_rect;
-    private Rect player_lives_shadow_rect;
-
-    private Texture2D player_lives_icon_texture;
-    private Rect player_lives_icon_rect;
+    private Texture2D player_health_icon_texture;
+    private Rect player_health_icon_rect;
 
     // player variables.
 
-    public int player_lives = 3;
-
+    public int player_health = 6;
+    public int player_max_health = 6;
 
     // Start is called before the first frame update
     void Start()
@@ -30,12 +34,9 @@ public class GamePlayerController : MonoBehaviour
         master = this.GetComponentInParent<GameMasterController>();
 
         ui_font = Resources.Load(GameConstants.DIRECTORY_FONT) as Font;
-        
-        player_lives_rect = new Rect(54, 20, 32, 32);
-        player_lives_shadow_rect = new Rect(56, 22, 32, 32);
 
-        player_lives_icon_texture = Resources.Load("texture/ui/tmenu_player_life") as Texture2D;
-        player_lives_icon_rect = new Rect(20, 20, 32, 32);
+        player_health_icon_texture = Resources.Load("texture/ui/tmenu_player_health") as Texture2D;
+        player_health_icon_rect = new Rect(64, 64, 64, 64);
 
         ui_style = new GUIStyle();
         ui_style.font = ui_font;
@@ -70,8 +71,11 @@ public class GamePlayerController : MonoBehaviour
         if (master.game_state != GameState.Game)
             return;
 
-        GUI.DrawTexture(player_lives_icon_rect, player_lives_icon_texture);
-        GUI.Label(player_lives_shadow_rect, player_lives.ToString(), ui_shadow_style);
-        GUI.Label(player_lives_rect, player_lives.ToString(), ui_style);
+        for(int i = 0; i < player_health; i++)
+        {
+            player_health_icon_rect.x = X_ORIGIN_HEALTH + (i * X_OFFSET_HEALTH);
+            player_health_icon_rect.y = Y_ORIGIN_HEALTH + ((i % 2 == 0) ? 0 : Y_OFFSET_HEALTH);
+            GUI.DrawTexture(player_health_icon_rect, player_health_icon_texture);
+        }
     }
 }

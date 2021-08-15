@@ -7,6 +7,7 @@ public class PlayerMovementController : MonoBehaviour
     , IActorFootstepManager
     , ICameraAudioManager
     , IActorSplashManager
+    , IActorDamageEffectManager
 {
     // state constants.
 
@@ -17,7 +18,9 @@ public class PlayerMovementController : MonoBehaviour
         player_water_default,
         player_water_jump,
         player_slide,
-        player_dive
+        player_dive,
+        player_attack,
+        player_damage
     }
 
     // input constants.
@@ -116,6 +119,8 @@ public class PlayerMovementController : MonoBehaviour
     int update_count_water_jump = 0;
     int update_count_slide = 0;
     int update_count_dive = 0;
+    int update_count_attack = 0;
+    int update_count_damage = 0;
 
     // input variables.
 
@@ -140,6 +145,7 @@ public class PlayerMovementController : MonoBehaviour
     private Animator player_animator;
     private GameObject camera_object;
     private GameObject player_render;
+    private Renderer player_renderer;
 
     // grounded variables.
 
@@ -186,6 +192,11 @@ public class PlayerMovementController : MonoBehaviour
 
     Vector3 dive_direction = Vector3.zero;
 
+    // damage variables.
+
+    GameObject damage_source = null;
+    ActorAttributeDamageType damage_type = null;
+
     // moving object variables.
 
     List<GameObject> moving_object_collision_list = new List<GameObject>();
@@ -214,7 +225,7 @@ public class PlayerMovementController : MonoBehaviour
     CameraAudioManager camera_audio_manager;
     ActorFootstepManager footstep_manager;
     ActorSplashManager splash_manager;
-
+    ActorDamageEffectManager damage_effect_manager;
       
     private void Start()
     {
@@ -228,6 +239,7 @@ public class PlayerMovementController : MonoBehaviour
         player_animator = this.GetComponent<Animator>();
         camera_object = GameObject.FindGameObjectWithTag(GameConstants.TAG_MAIN_CAMERA);
         player_render = GameObject.Find(PLAYER_RENDER_GAME_OBJECT_NAME);
+        player_renderer = this.GetComponentInChildren<SkinnedMeshRenderer>();
 
         // add components.
 
@@ -236,11 +248,16 @@ public class PlayerMovementController : MonoBehaviour
         audio_source_loop = this.gameObject.AddComponent<AudioSource>();
         audio_source_loop.loop = true;
 
+        // initialise actor attributes.
+
+        damage_type = new ActorAttributeDamageType();
+
         // initialise interface.
 
         camera_audio_manager = new CameraAudioManager();
         footstep_manager = new ActorFootstepManager();
         splash_manager = new ActorSplashManager();
+        damage_effect_manager = new ActorDamageEffectManager();
 
         // setup.
 
@@ -299,6 +316,10 @@ public class PlayerMovementController : MonoBehaviour
                 UpdateSlidePlayerState();
             else if (player_state == PlayerState.player_dive)
                 UpdateDivePlayerState();
+            else if (player_state == PlayerState.player_attack)
+                UpdateAttackPlayerState();
+            else if (player_state == PlayerState.player_damage)
+                UpdateDamagePlayerState();
 
             // do state specific actions.
 
@@ -335,6 +356,14 @@ public class PlayerMovementController : MonoBehaviour
             else if(player_state == PlayerState.player_dive)
             {
                 UpdateDiveSpeed();
+            }
+            else if(player_state == PlayerState.player_attack)
+            {
+
+            }
+            else if(player_state == PlayerState.player_damage)
+            {
+                UpdateJumpMovement();
             }
 
             // update animator.
@@ -475,7 +504,8 @@ public class PlayerMovementController : MonoBehaviour
 
         if(player_state == PlayerState.player_jump
             ||player_state == PlayerState.player_slide
-            || player_state == PlayerState.player_dive)
+            || player_state == PlayerState.player_dive
+            || player_state == PlayerState.player_damage)
         {
             rigid_body.drag = DRAG_AIR;
             player_sphere_collider.material.dynamicFriction = 0f;
@@ -1139,6 +1169,59 @@ public class PlayerMovementController : MonoBehaviour
     }
 
     #endregion
+    #region attack
+
+    private void UpdateAttackPlayerState()
+    {
+        update_count_attack++;
+    }
+
+    private void UpdateAttackBegin()
+    {
+        update_count_attack = 0;
+    }
+
+    #endregion
+    #region damage
+
+    private void UpdateDamagePlayerState()
+    {
+        update_count_damage++;
+
+        if (update_count_damage >= 100)
+        {
+            ChangePlayerState(PlayerState.player_default);
+            return;
+        }
+    }
+
+    private void UpdateDamageBegin()
+    {
+        update_count_damage = 0;
+
+        master.player_controller.player_health -= damage_type.damage_amount;
+
+        // zero out velocities.
+        rigid_body.velocity = Vector3.zero;
+
+        if (damage_type.damage_direction_type 
+            == GameConstants.DamageDirectionType.type_up)
+        {
+            rigid_body.AddForce(Vector3.up * damage_type.damage_force_multiplier, ForceMode.VelocityChange);
+        }
+        else if(damage_type.damage_direction_type 
+            == GameConstants.DamageDirectionType.type_push)
+        {
+            rigid_body.AddForce((this.transform.position - damage_source.transform.position) * damage_type.damage_force_multiplier, ForceMode.VelocityChange);
+        }
+
+        // play sound.
+
+        audio_source.clip = master.audio_controller.a_player_hurt_default;
+        audio_source.Play();
+    }
+
+    #endregion
 
     // animator.
 
@@ -1198,6 +1281,17 @@ public class PlayerMovementController : MonoBehaviour
 
             is_colliding_moving_object = true;
         }
+
+        if (collision.gameObject.tag == GameConstants.TAG_DAMAGE_OBJECT
+            && player_state != PlayerState.player_damage)
+        {
+            damage_source = collision.gameObject;
+            damage_type = collision.gameObject.GetComponent<ActorAttributeDamageType>();
+            if (damage_type == null)
+                damage_type = ActorAttributeDamageType.GetDefault();
+
+            ChangePlayerState(PlayerState.player_damage);
+        }
     }
 
     private void OnCollisionExit(Collision collision)
@@ -1232,6 +1326,10 @@ public class PlayerMovementController : MonoBehaviour
             UpdateSlideBegin();
         else if (player_state == PlayerState.player_dive)
             UpdateDiveBegin();
+        else if (player_state == PlayerState.player_attack)
+            UpdateAttackBegin();
+        else if (player_state == PlayerState.player_damage)
+            UpdateDamageBegin();
     }
 
     // trigger.
@@ -1244,6 +1342,17 @@ public class PlayerMovementController : MonoBehaviour
 
             is_colliding_water_object = true;
             water_y_level = other.transform.position.y + (other.bounds.size.y / 2);
+        }
+
+        if(other.gameObject.tag == GameConstants.TAG_DAMAGE_OBJECT
+            && player_state != PlayerState.player_damage)
+        {
+            damage_source = other.gameObject;
+            damage_type = other.gameObject.GetComponent<ActorAttributeDamageType>();
+            if (damage_type == null)
+                damage_type = ActorAttributeDamageType.GetDefault();
+
+            ChangePlayerState(PlayerState.player_damage);
         }
     }
 
@@ -1285,6 +1394,14 @@ public class PlayerMovementController : MonoBehaviour
         return splash_manager;
     }
 
+    public ActorDamageEffectManager UpdateDamageEffectController()
+    {
+        damage_effect_manager.is_active = player_state == PlayerState.player_damage;
+        damage_effect_manager.damage_effect_type = damage_type.damage_effect_type;
+        damage_effect_manager.actor_renderer = player_renderer;
+        return damage_effect_manager;
+    }
+
     private void OnGUI()
     {
         GUI.color = Color.black;
@@ -1310,4 +1427,6 @@ public class PlayerMovementController : MonoBehaviour
             + "\nis full submerged: " + is_full_submerged
             + "\nslide resistance: " + slide_resistance);
     }
+
+    
 }
