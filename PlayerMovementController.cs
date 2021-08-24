@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Assets.script;
+using System;
 
 public class PlayerMovementController : MonoBehaviour
     , IActorFootstepManager
@@ -20,7 +21,7 @@ public class PlayerMovementController : MonoBehaviour
         player_slide,
         player_dive,
         player_attack,
-        player_damage
+        player_damage,
     }
 
     // input constants.
@@ -195,7 +196,7 @@ public class PlayerMovementController : MonoBehaviour
     // damage variables.
 
     GameObject damage_source = null;
-    ActorAttributeDamageType damage_type = null;
+    AttributeDamageTypeData damage_type = null;
 
     // moving object variables.
 
@@ -214,6 +215,10 @@ public class PlayerMovementController : MonoBehaviour
 
     Vector3 facing_direction = Vector3.zero;
     Vector3 facing_direction_delta = Vector3.zero;
+
+    public RuntimeAnimatorController animator_game;
+    public RuntimeAnimatorController animator_game_over;
+    public RuntimeAnimatorController animator_cutscene;
 
     // audio variables.
 
@@ -241,6 +246,10 @@ public class PlayerMovementController : MonoBehaviour
         player_render = GameObject.Find(PLAYER_RENDER_GAME_OBJECT_NAME);
         player_renderer = this.GetComponentInChildren<SkinnedMeshRenderer>();
 
+        // add listeners.
+
+        master.GameStateChange += ChangeGameState;
+
         // add components.
 
         audio_source = this.gameObject.AddComponent<AudioSource>();
@@ -250,7 +259,7 @@ public class PlayerMovementController : MonoBehaviour
 
         // initialise actor attributes.
 
-        damage_type = new ActorAttributeDamageType();
+        damage_type = new AttributeDamageTypeData();
 
         // initialise interface.
 
@@ -262,6 +271,13 @@ public class PlayerMovementController : MonoBehaviour
         // setup.
 
         InitialisePhysicalParameters();
+    }
+
+    void OnDestroy()
+    {
+        // remove listeners.
+
+        master.GameStateChange -= ChangeGameState;
     }
 
     private void InitialisePhysicalParameters()
@@ -368,6 +384,16 @@ public class PlayerMovementController : MonoBehaviour
 
             // update animator.
 
+            UpdateAnimator();
+        }
+        else if(master.game_state == GameState.GameOver)
+        {
+            rigid_body.isKinematic = true;
+            UpdateAnimator();
+        }
+        else if(master.game_state == GameState.Cutscene)
+        {
+            rigid_body.isKinematic = true;
             UpdateAnimator();
         }
         else
@@ -1212,12 +1238,23 @@ public class PlayerMovementController : MonoBehaviour
         else if(damage_type.damage_direction_type 
             == GameConstants.DamageDirectionType.type_push)
         {
+            rigid_body.AddForce(Vector3.up * JUMP_FORCE_MULTIPLIER, ForceMode.VelocityChange);
             rigid_body.AddForce((this.transform.position - damage_source.transform.position) * damage_type.damage_force_multiplier, ForceMode.VelocityChange);
         }
 
         // play sound.
 
-        audio_source.clip = master.audio_controller.a_player_hurt_default;
+        switch (damage_type.damage_effect_type)
+        {
+            case GameConstants.DamageEffectType.type_fire:
+                audio_source.clip = master.audio_controller.a_player_hurt_fire;
+                break;
+
+            default:
+                audio_source.clip = master.audio_controller.a_player_hurt_default;
+                break;
+        }
+
         audio_source.Play();
     }
 
@@ -1227,7 +1264,8 @@ public class PlayerMovementController : MonoBehaviour
 
     private void UpdateAnimator()
     {
-        player_animator.SetInteger("anim_state", (int)player_state);
+        player_animator.SetInteger("anim_game_state", (int)master.game_state);
+        player_animator.SetInteger("anim_player_state", (int)player_state);
         player_animator.SetBool("anim_is_grounded", is_spherecast_grounded);
         player_animator.SetBool("anim_is_moving", rigid_body.velocity.magnitude > 0.2f);
         player_animator.SetFloat("anim_horizontal_speed", is_input_directional ? rigid_body.velocity.magnitude : 0.0f);
@@ -1271,43 +1309,21 @@ public class PlayerMovementController : MonoBehaviour
         }
     }
 
-    // collision.
-
-    private void OnCollisionEnter(Collision collision)
-    {
-        if(collision.gameObject.tag == GameConstants.TAG_MOVING_OBJECT)
-        {
-            moving_object_collision_list.Add(collision.gameObject);
-
-            is_colliding_moving_object = true;
-        }
-
-        if (collision.gameObject.tag == GameConstants.TAG_DAMAGE_OBJECT
-            && player_state != PlayerState.player_damage)
-        {
-            damage_source = collision.gameObject;
-            damage_type = collision.gameObject.GetComponent<ActorAttributeDamageType>();
-            if (damage_type == null)
-                damage_type = ActorAttributeDamageType.GetDefault();
-
-            ChangePlayerState(PlayerState.player_damage);
-        }
-    }
-
-    private void OnCollisionExit(Collision collision)
-    {
-        if(moving_object_collision_list.Contains(collision.gameObject))
-        {
-            moving_object_collision_list.Remove(collision.gameObject);
-
-            if (moving_object_collision_list.Count == 0)
-            {
-                is_colliding_moving_object = false;
-            }
-        }
-    }
-
     // state change.
+
+    private void ChangeGameState(object sender, EventArgs e)
+    {
+        GameStateChangeEventArgs args = e as GameStateChangeEventArgs;
+
+        if (args.game_state == GameState.Game)
+            player_animator.runtimeAnimatorController = animator_game;
+        else if (args.game_state == GameState.GameOver)
+            player_animator.runtimeAnimatorController = animator_game_over;
+        else if (args.game_state == GameState.Cutscene)
+            player_animator.runtimeAnimatorController = animator_cutscene;
+        else
+            player_animator.runtimeAnimatorController = animator_game;
+    }
 
     private void ChangePlayerState(PlayerState new_state)
     {
@@ -1332,6 +1348,58 @@ public class PlayerMovementController : MonoBehaviour
             UpdateDamageBegin();
     }
 
+    private void HandleDamageObject(GameObject damage_object)
+    {
+        // get the objects damage attributes (or default)
+        // the handle moving into the damage state.
+
+        damage_source = damage_object.gameObject;
+        damage_type = damage_object.gameObject.GetComponent<ActorAttributeDamageType>()?.damage_type;
+        if (damage_type == null)
+            damage_type = AttributeDamageTypeData.GetDefault();
+
+        if (player_state != PlayerState.player_damage || damage_type.damage_is_instant)
+            ChangePlayerState(PlayerState.player_damage);
+    }
+
+    // collision.
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if(collision.gameObject.tag == GameConstants.TAG_MOVING_OBJECT)
+        {
+            moving_object_collision_list.Add(collision.gameObject);
+
+            is_colliding_moving_object = true;
+        }
+
+        if (collision.gameObject.tag == GameConstants.TAG_DAMAGE_OBJECT)
+        {
+            HandleDamageObject(collision.gameObject);
+        }
+    }
+
+    private void OnCollisionStay(Collision collision)
+    {
+        if (collision.gameObject.tag == GameConstants.TAG_DAMAGE_OBJECT)
+        {
+            HandleDamageObject(collision.gameObject);
+        }
+    }
+
+    private void OnCollisionExit(Collision collision)
+    {
+        if(moving_object_collision_list.Contains(collision.gameObject))
+        {
+            moving_object_collision_list.Remove(collision.gameObject);
+
+            if (moving_object_collision_list.Count == 0)
+            {
+                is_colliding_moving_object = false;
+            }
+        }
+    }
+
     // trigger.
 
     private void OnTriggerEnter(Collider other)
@@ -1344,15 +1412,17 @@ public class PlayerMovementController : MonoBehaviour
             water_y_level = other.transform.position.y + (other.bounds.size.y / 2);
         }
 
-        if(other.gameObject.tag == GameConstants.TAG_DAMAGE_OBJECT
-            && player_state != PlayerState.player_damage)
+        if(other.gameObject.tag == GameConstants.TAG_DAMAGE_OBJECT)
         {
-            damage_source = other.gameObject;
-            damage_type = other.gameObject.GetComponent<ActorAttributeDamageType>();
-            if (damage_type == null)
-                damage_type = ActorAttributeDamageType.GetDefault();
+            HandleDamageObject(other.gameObject);
+        }
+    }
 
-            ChangePlayerState(PlayerState.player_damage);
+    private void OnTriggerStay(Collider other)
+    {
+        if (other.gameObject.tag == GameConstants.TAG_DAMAGE_OBJECT)
+        {
+            HandleDamageObject(other.gameObject);
         }
     }
 
@@ -1370,14 +1440,22 @@ public class PlayerMovementController : MonoBehaviour
         }
     }
 
+    // interface managers.
+
     public CameraAudioManager UpdateCameraAudioController()
     {
+        if (master.game_state != GameState.Game)
+            return null;
+
         camera_audio_manager.is_submerged = is_full_submerged;
         return camera_audio_manager;
     }
 
     public ActorFootstepManager UpdateFootstepController()
     {
+        if (master.game_state != GameState.Game)
+            return null;
+
         footstep_manager.is_grounded = is_spherecast_grounded;
         footstep_manager.ground_type = ground_type;
         footstep_manager.velocity = rigid_body.velocity.magnitude;
@@ -1388,6 +1466,9 @@ public class PlayerMovementController : MonoBehaviour
 
     public ActorSplashManager UpdateSplashController()
     {
+        if (master.game_state != GameState.Game)
+            return null;
+
         splash_manager.water_level = water_y_level;
         splash_manager.is_in_water = is_colliding_water_object;
         splash_manager.is_submerged = is_full_submerged;
@@ -1396,6 +1477,9 @@ public class PlayerMovementController : MonoBehaviour
 
     public ActorDamageEffectManager UpdateDamageEffectController()
     {
+        if (master.game_state != GameState.Game)
+            return null;
+
         damage_effect_manager.is_active = player_state == PlayerState.player_damage;
         damage_effect_manager.damage_effect_type = damage_type.damage_effect_type;
         damage_effect_manager.actor_renderer = player_renderer;
@@ -1427,6 +1511,4 @@ public class PlayerMovementController : MonoBehaviour
             + "\nis full submerged: " + is_full_submerged
             + "\nslide resistance: " + slide_resistance);
     }
-
-    
 }
