@@ -137,6 +137,9 @@ public class ActorFootstepController : MonoBehaviour
 
         manager_data = manager.UpdateFootstepController();
 
+        if (manager_data == null)
+            return;
+
         is_step_grounded = manager_data.is_grounded;
         step_type = manager_data.ground_type;
         step_speed = manager_data.velocity;

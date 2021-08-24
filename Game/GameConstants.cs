@@ -14,12 +14,25 @@ namespace Assets.script
         public const string TAG_MOVING_OBJECT = "moving_object";
         public const string TAG_DAMAGE_OBJECT = "damage_object";
 
+        public const string NAME_PLAYER = "player";
+        public const string NAME_PLAYER_CAMERA = "player_camera";
+
         public const string TAG_PLAYER_CAMERA_TARGET = "player_camera_target";
         public const string TAG_MAIN_CAMERA = "MainCamera";
 
         public const string DIRECTORY_FONT = "font/game_font";
 
+        public const int LAYER_MASK_ONLY_PLAYER = 1 << 8;
         public const int LAYER_MASK_ALL_BUT_PLAYER = ~(1 << 8);
+
+        public enum CameraMode
+        {
+            camera_default,
+            camera_fixed,
+            camera_fixed_tracking
+        }
+
+        
 
         public enum DamageSourceType
         {
@@ -29,9 +42,9 @@ namespace Assets.script
 
         public enum DamageEffectType
         {
-            type_default
+            type_default,
+            type_fire
         }
-
 
         public enum DamageDirectionType
         {

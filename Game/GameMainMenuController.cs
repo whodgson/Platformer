@@ -21,6 +21,11 @@ public class GameMainMenuController : MonoBehaviour
 
     }
 
+    void OnDestroy()
+    {
+        master.input_controller.action_start.performed -= LoadTestScene;
+    }
+
     private void LoadTestScene(InputAction.CallbackContext context)
     {
         Debug.Log("Loading Test Scene");

@@ -37,10 +37,13 @@ public class ActorSplashController : MonoBehaviour
     void Update()
     {
         manager_data = manager.UpdateSplashController();
+
+        if (manager_data == null)
+            return;
+
         y_level = manager_data.water_level;
         is_in_water = manager_data.is_in_water;
         is_submerged = manager_data.is_submerged;
-
 
         timer += (Time.deltaTime * TIMER_MULTIPLIER);
 

@@ -25,6 +25,10 @@ public class CameraAudioController : MonoBehaviour
     private void FixedUpdate()
     {
         manager_data = manager.UpdateCameraAudioController();
+
+        if (manager_data == null)
+            return;
+
         audio_low_pass_filter.enabled = manager_data.is_submerged;
     }
 

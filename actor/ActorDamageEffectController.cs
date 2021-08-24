@@ -33,6 +33,12 @@ public class ActorDamageEffectController : MonoBehaviour
     {
         manager_data = manager.UpdateDamageEffectController();
 
+        if (manager_data == null)
+        {
+            actor_renderer.material.SetColor(EMISSION_MATERIAL_PROPERTY, Color.black);
+            return;
+        }
+
         was_active = is_active;
         is_active = manager_data.is_active;
 
@@ -50,6 +56,7 @@ public class ActorDamageEffectController : MonoBehaviour
             is_flashing = !is_flashing;
             actor_renderer.material.SetColor(EMISSION_MATERIAL_PROPERTY, is_flashing ? Color.red : Color.black);
         }
-
     }
+
+
 }

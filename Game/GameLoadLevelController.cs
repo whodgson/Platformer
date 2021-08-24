@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Assets.script;
 
 public class GameLoadLevelController : MonoBehaviour
 {
@@ -65,6 +66,11 @@ public class GameLoadLevelController : MonoBehaviour
         }
     }
 
+    private void OnDestroy()
+    {
+        SceneManager.sceneLoaded -= EndLoadLevel;
+    }
+
     public void StartLoadLevel(string scene_name, string player_start_transform_name, string camera_start_transform_name)
     {
         // Begin loading a level.
@@ -107,6 +113,11 @@ public class GameLoadLevelController : MonoBehaviour
             camera_start_transform.position, 
             camera_start_transform.rotation);
 
+        // name the prefabs.
+
+        player.name = GameConstants.NAME_PLAYER;
+        camera.name = GameConstants.NAME_PLAYER_CAMERA;
+
         // reset after loading.
 
         master.ChangeState(GameState.Game);
@@ -131,4 +142,6 @@ public class GameLoadLevelController : MonoBehaviour
         if (!Application.isEditor)
             return;
     }
+
+    
 }
