@@ -40,6 +40,14 @@ public class CameraController : MonoBehaviour
 
     GameMasterController master;
 
+    // properties.
+
+    public float Fixed_Transition
+    {
+        get { return fixed_transition; }
+    }
+
+
     void Start()
     {
         master = GameObject.FindObjectOfType<GameMasterController>();
