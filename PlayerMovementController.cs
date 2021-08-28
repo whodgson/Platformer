@@ -394,7 +394,7 @@ public class PlayerMovementController : MonoBehaviour
         else if(master.game_state == GameState.Cutscene)
         {
             rigid_body.isKinematic = true;
-            UpdateAnimator();
+            UpdateAnimatorCutscene();
         }
         else
         {
@@ -1307,6 +1307,28 @@ public class PlayerMovementController : MonoBehaviour
             // Move our position a step closer to the target.
             player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
         }
+    }
+
+    private void UpdateAnimatorGameOver()
+    {
+
+    }
+
+    private void UpdateAnimatorCutscene()
+    {
+
+        if (master.cutscene_controller.event_source == null)
+            return;
+
+        facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward,
+            master.cutscene_controller.event_source.transform.position - player_render.transform.position,
+            ANIMATION_TURNING_SPEED_MULTIPLIER,
+            0.0f);
+
+        facing_direction_delta.y = 0.0f;
+
+        // Move our position a step closer to the target.
+        player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
     }
 
     // state change.
