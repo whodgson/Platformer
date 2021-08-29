@@ -105,8 +105,8 @@ namespace Assets.script.Event
             // if the button is pressed, and
             // reached the end of the message.
 
-            if (!master.input_controller.was_input_positive 
-                && master.input_controller.is_input_positive
+            if (!master.input_controller.Was_Input_Positive 
+                && master.input_controller.Is_Input_Positive
                 && output_text_index == message_text.Length)
             {
                 master.user_interface_controller.UnsetMessageBox();

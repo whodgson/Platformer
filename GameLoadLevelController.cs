@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Assets.script;
 
 public class GameLoadLevelController : MonoBehaviour
 {
@@ -13,9 +14,9 @@ public class GameLoadLevelController : MonoBehaviour
 
     // load variables.
 
-    string load_scene_name = string.Empty;
-    string load_player_start_transform_name = string.Empty;
-    string load_camera_start_transform_name = string.Empty;
+    public string load_scene_name = string.Empty;
+    public string load_player_start_transform_name = string.Empty;
+    public string load_camera_start_transform_name = string.Empty;
 
     float load_timer = 0.0f;
 
@@ -65,6 +66,11 @@ public class GameLoadLevelController : MonoBehaviour
         }
     }
 
+    private void OnDestroy()
+    {
+        SceneManager.sceneLoaded -= EndLoadLevel;
+    }
+
     public void StartLoadLevel(string scene_name, string player_start_transform_name, string camera_start_transform_name)
     {
         // Begin loading a level.
@@ -107,15 +113,20 @@ public class GameLoadLevelController : MonoBehaviour
             camera_start_transform.position, 
             camera_start_transform.rotation);
 
+        // name the prefabs.
+
+        player.name = GameConstants.NAME_PLAYER;
+        camera.name = GameConstants.NAME_PLAYER_CAMERA;
+
         // reset after loading.
 
         master.ChangeState(GameState.Game);
 
         is_loading = false;
 
-        load_scene_name = string.Empty;
-        load_player_start_transform_name = string.Empty;
-        load_camera_start_transform_name = string.Empty;
+        //load_scene_name = string.Empty;
+        //load_player_start_transform_name = string.Empty;
+        //load_camera_start_transform_name = string.Empty;
     }
 
     private void OnGUI()
@@ -130,7 +141,7 @@ public class GameLoadLevelController : MonoBehaviour
 
         if (!Application.isEditor)
             return;
-
-        GUI.Label(debug_label_rectangle, load_timer.ToString());
     }
+
+    
 }

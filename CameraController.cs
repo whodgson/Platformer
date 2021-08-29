@@ -26,7 +26,8 @@ public class CameraController : MonoBehaviour
 
     // Fixed camera variables.
 
-    private bool is_fixed = false;
+    private GameConstants.CameraMode camera_mode;
+
     private Transform fixed_transform = null;
     private float fixed_transition = 0f;
 
@@ -39,9 +40,19 @@ public class CameraController : MonoBehaviour
 
     GameMasterController master;
 
+    // properties.
+
+    public float Fixed_Transition
+    {
+        get { return fixed_transition; }
+    }
+
+
     void Start()
     {
         master = GameObject.FindObjectOfType<GameMasterController>();
+
+        camera_mode = GameConstants.CameraMode.camera_default;
 
         fixed_start_position = this.transform.position;
         fixed_start_rotation = this.transform.rotation;
@@ -52,14 +63,66 @@ public class CameraController : MonoBehaviour
         // set to default target (player).
 
         target = GameObject.FindGameObjectWithTag(GameConstants.TAG_PLAYER_CAMERA_TARGET).transform;
+
+        Debug.Log("Camera Starting");
     }
 
     void Update()
     {
-        if (is_fixed)
-            UpdateCameraFixed();
-        else
-            UpdateCameraNotFixed();
+        if (master.game_state == GameState.Game)
+        {
+            if (camera_mode == GameConstants.CameraMode.camera_default)
+            {
+                UpdateCameraInput();
+                UpdateCameraDefault();
+            }
+            else if (camera_mode == GameConstants.CameraMode.camera_fixed)
+            {
+                UpdateCameraFixed();
+            }
+            else if(camera_mode == GameConstants.CameraMode.camera_fixed_tracking)
+            {
+                UpdateCameraFixedTracking();
+            }
+        }
+        else if(master.game_state == GameState.Cutscene)
+        {
+            if (camera_mode == GameConstants.CameraMode.camera_default)
+            {
+                UpdateCameraDefault();
+            }
+            else if (camera_mode == GameConstants.CameraMode.camera_fixed)
+            {
+                UpdateCameraFixed();
+            }
+            else if (camera_mode == GameConstants.CameraMode.camera_fixed_tracking)
+            {
+                UpdateCameraFixedTracking();
+            }
+        }
+    }
+
+    private void UpdateCameraInput()
+    {
+        // Get x and y offset from input.
+
+        x += master.input_controller.action_aim_horizontal.ReadValue<float>() * (X_SPEED
+            * master.input_controller.sensitivity_camera_horizontal);
+
+        y -= master.input_controller.action_aim_vertical.ReadValue<float>() * (Y_SPEED
+            * master.input_controller.sensitivity_camera_vertical);
+
+        // Get max distance from input.
+
+        target_distance += master.input_controller.action_aim_zoom.ReadValue<float>()
+            * (ZOOM_SPEED * master.input_controller.sensitivity_camera_zoom);
+
+        if (target_distance > MAX_DISTANCE_MAX) target_distance = MAX_DISTANCE_MAX;
+        if (target_distance < MAX_DISTANCE_MIN) target_distance = MAX_DISTANCE_MIN;
+
+        // Limit how low or high y can go.
+
+        y = Mathf.Clamp(y, Y_MIN, Y_MAX);
     }
 
     private void UpdateCameraFixed()
@@ -86,28 +149,32 @@ public class CameraController : MonoBehaviour
         y = transform.rotation.eulerAngles.x;
     }
 
-    private void UpdateCameraNotFixed()
+    private void UpdateCameraFixedTracking()
     {
-        // Get x and y offset from input.
+        // Get the transition speed.
 
-        x += master.input_controller.action_aim_horizontal.ReadValue<float>() * (X_SPEED 
-            * master.input_controller.sensitivity_camera_horizontal);
+        float tran_speed = FIXED_TRANSITION_STEP * Time.deltaTime;
 
-        y -= master.input_controller.action_aim_vertical.ReadValue<float>() * (Y_SPEED 
-            * master.input_controller.sensitivity_camera_vertical);
+        // Increment the transition amount (0 is none, 1 is complete).
 
-        // Get max distance from input.
+        fixed_transition += tran_speed;
+        fixed_transition = Mathf.Clamp(fixed_transition, 0, 1);
 
-        target_distance += master.input_controller.action_aim_zoom.ReadValue<float>() 
-            * (ZOOM_SPEED * master.input_controller.sensitivity_camera_zoom);
+        // Lerp between the start and end points.
 
-        if (target_distance > MAX_DISTANCE_MAX) target_distance = MAX_DISTANCE_MAX;
-        if (target_distance < MAX_DISTANCE_MIN) target_distance = MAX_DISTANCE_MIN;
+        transform.position = Vector3.Lerp(fixed_start_position, fixed_transform.position, fixed_transition);
+        transform.LookAt(target.position);
 
-        // Limit how low or high y can go.
+        // Set the X and Y rotation to the current rotation.
+        // So the dynamic camera is in the same position when
+        // exiting the fixed camera zone.
 
-        y = Mathf.Clamp(y, Y_MIN, Y_MAX);
+        x = transform.rotation.eulerAngles.y;
+        y = transform.rotation.eulerAngles.x;
+    }
 
+    private void UpdateCameraDefault()
+    {
         // Get the rotation from x and y.
 
         var rotation = Quaternion.Euler(y, x, 0.0f);
@@ -159,22 +226,43 @@ public class CameraController : MonoBehaviour
         }
     }
 
-    public void SetFixedCamera(Transform fixed_transform)
+    public void SetCamera(GameConstants.CameraMode new_camera_mode, CameraModeChangeData new_data)
     {
-        this.is_fixed = true;
+        this.camera_mode = new_camera_mode;
 
-        // Initiate the transition to a fixed camera angle.
+        if(camera_mode == GameConstants.CameraMode.camera_default)
+        {
+            // reset the transition.
 
-        fixed_start_position = this.transform.position;
-        fixed_start_rotation = this.transform.rotation;
-        fixed_transition = 0.0f;
+            fixed_start_position = this.transform.position;
+            fixed_start_rotation = this.transform.rotation;
+            fixed_transition = 0.0f;
+        }
+        else if(camera_mode == GameConstants.CameraMode.camera_fixed)
+        {
+            // set the transition.
 
-        this.fixed_transform = fixed_transform;
+            fixed_start_position = this.transform.position;
+            fixed_start_rotation = this.transform.rotation;
+            fixed_transition = 0.0f;
+
+            this.fixed_transform = new_data.fixed_transform;
+        }
+        else if(camera_mode == GameConstants.CameraMode.camera_fixed_tracking)
+        {
+            // set the transition.
+
+            fixed_start_position = this.transform.position;
+            fixed_start_rotation = this.transform.rotation;
+            fixed_transition = 0.0f;
+
+            this.fixed_transform = new_data.fixed_transform;
+        }
     }
 
-    public void UnsetFixedCamera()
+    public void UnsetCamera()
     {
-        this.is_fixed = false;
+        camera_mode = GameConstants.CameraMode.camera_default;
 
         // Reset the transition.
 
@@ -183,3 +271,4 @@ public class CameraController : MonoBehaviour
         fixed_transition = 0.0f;
     }
 }
+

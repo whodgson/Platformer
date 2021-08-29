@@ -7,6 +7,7 @@ public class CameraAudioController : MonoBehaviour
 {
     public GameObject manager_game_object;
     private ICameraAudioManager manager;
+    private CameraAudioManager manager_data;
 
     AudioLowPassFilter audio_low_pass_filter;
 
@@ -23,12 +24,11 @@ public class CameraAudioController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        audio_low_pass_filter.enabled = manager.UpdateCameraAudioController();
-    }
+        manager_data = manager.UpdateCameraAudioController();
 
-    // Update is called once per frame
-    void Update()
-    {
-        
+        if (manager_data == null)
+            return;
+
+        audio_low_pass_filter.enabled = manager_data.is_submerged;
     }
 }

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Assets.script;
 
 public enum GameState
 {
@@ -16,7 +17,16 @@ public enum GameState
 
 public class GameMasterController : MonoBehaviour
 {
+    // state variables.
+
     public GameState game_state;
+    private float game_state_time = 0.0f;
+
+    public float Game_State_Time
+    { get => game_state_time; }
+
+    // master components.
+
     public GameLoadLevelController load_level_controller;
     public GameInputController input_controller;
     public GameAudioController audio_controller;
@@ -34,6 +44,8 @@ public class GameMasterController : MonoBehaviour
 
     public GameObject player_prefab;
     public GameObject camera_prefab;
+
+
 
     private void Awake()
     {
@@ -54,10 +66,16 @@ public class GameMasterController : MonoBehaviour
         user_interface_controller = this.gameObject.GetComponent<GameUserInterfaceController>();
     }
 
+    private void Update()
+    {
+        game_state_time += Time.deltaTime;
+    }
+
     public void ChangeState(GameState new_game_state)
     {
         game_state = new_game_state;
         game_state_change_event_args.game_state = game_state;
+        game_state_time = 0.0f;
 
         EventHandler handler = GameStateChange;
         if (handler != null) handler(this, game_state_change_event_args);
@@ -66,6 +84,16 @@ public class GameMasterController : MonoBehaviour
     public static GameMasterController GetMasterController()
     {
         return GameObject.FindObjectOfType<GameMasterController>();
+    }
+
+    public static GameObject GetPlayerObject()
+    {
+        return GameObject.Find("player");
+    }
+
+    public static GameObject GetPlayerCameraObject()
+    {
+        return GameObject.Find("player_camera");
     }
 }
 

@@ -24,6 +24,32 @@ public class GameInputController : MonoBehaviour
     public float sensitivity_camera_horizontal = 0.7f;
     public float sensitivity_camera_vertical = 0.7f;
 
+    private bool was_input_positive = false;
+    private bool was_input_negative = false;
+    private bool was_input_interact = false;
+
+    private bool is_input_positive = false;
+    private bool is_input_negative = false;
+    private bool is_input_interact = false;
+
+    public bool Was_Input_Positive
+    { get => was_input_positive; }
+
+    public bool Was_Input_Negative
+    { get => was_input_negative; }
+
+    public bool Was_Input_Interact
+    { get => was_input_interact; }
+
+    public bool Is_Input_Positive
+    { get => is_input_positive; }
+
+    public bool Is_Input_Negative
+    { get => is_input_negative; }
+
+    public bool Is_Input_Interact
+    { get => is_input_interact; }
+
     void Awake()
     {
         action_map = controls.FindActionMap("action_map");
@@ -51,5 +77,16 @@ public class GameInputController : MonoBehaviour
         action_aim_horizontal.Enable();
         action_aim_vertical.Enable();
         action_aim_zoom.Enable();
+    }
+
+    void Update()
+    {
+        was_input_positive = is_input_positive;
+        was_input_negative = is_input_negative;
+        was_input_interact = is_input_interact;
+
+        is_input_positive = action_positive.ReadValue<float>() >= 0.1f;
+        is_input_negative = action_negative.ReadValue<float>() >= 0.1f;
+        is_input_interact = action_interact.ReadValue<float>() >= 0.1f;
     }
 }

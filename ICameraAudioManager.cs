@@ -8,6 +8,16 @@ namespace Assets.script
 {
     public interface ICameraAudioManager
     {
-        bool UpdateCameraAudioController();
+        CameraAudioManager UpdateCameraAudioController();
+    }
+
+    public class CameraAudioManager
+    {
+        public bool is_submerged;
+
+        public CameraAudioManager()
+        {
+            is_submerged = false;
+        }
     }
 }

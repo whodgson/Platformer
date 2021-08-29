@@ -45,7 +45,7 @@ public class GameCutsceneController : MonoBehaviour
         current_event_time += Time.deltaTime;
         current_event_step_time += Time.deltaTime;
 
-        current_event_step_time_interval = (master.input_controller.is_input_positive)
+        current_event_step_time_interval = (master.input_controller.Is_Input_Interact)
             ? EVENT_STEP_INTERVAL_FAST
             : EVENT_STEP_INTERVAL_DEFAULT;
 

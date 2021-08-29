@@ -26,6 +26,7 @@ public class PlayerMovementController : MonoBehaviour
 
     // input constants.
 
+    const float INPUT_GAME_STATE_DELAY = 0.5f;
     const float INPUT_DIRECTIONAL_THRESHOLD = 0.01f;
     const float INPUT_BUTTON_THRESHOLD = 0.5f;
 
@@ -165,6 +166,7 @@ public class PlayerMovementController : MonoBehaviour
     Vector3 raycast_grounded_slope_normal = Vector3.up;
     Vector3 raycast_grounded_slope_direction = Vector3.up;
 
+    float spherecast_grounded_slope_angle = 0.0f;
     Vector3 spherecast_grounded_slope_normal = Vector3.up;
 
     GameConstants.GroundType ground_type;
@@ -299,6 +301,11 @@ public class PlayerMovementController : MonoBehaviour
         grounded_spherecast_max_distance = GROUNDED_SPHERECAST_ADDITIONAL_DISTANCE;
     }
 
+    private void Update()
+    {
+        
+    }
+
     private void FixedUpdate()
     {
         UpdatePlayerInput();
@@ -407,6 +414,12 @@ public class PlayerMovementController : MonoBehaviour
 
     private void UpdatePlayerInput()
     {
+        // ignore all input for a short
+        // time when entering game state.
+
+        if (master.Game_State_Time <= INPUT_GAME_STATE_DELAY)
+            return;
+
         // get previous inputs.
 
         was_input_directional = is_input_directional;
@@ -494,11 +507,20 @@ public class PlayerMovementController : MonoBehaviour
         {
             is_spherecast_grounded = spherecast_hit_info.distance <= grounded_spherecast_max_distance;
 
+            // if also ray grounded
             // set the slope normal.
-            spherecast_grounded_slope_normal = raycast_hit_info.normal;
+            spherecast_grounded_slope_normal = (is_raycast_grounded) 
+                ? spherecast_hit_info.normal 
+                : raycast_hit_info.normal;
+
+            // if also ray grounded
+            // set the angle of the surface.
+            spherecast_grounded_slope_angle = (is_raycast_grounded) 
+                ? Vector3.Angle(raycast_hit_info.normal, Vector3.up) 
+                : raycast_grounded_slope_angle;
 
             // set the grounded type, if grounded.
-            if(is_spherecast_grounded)
+            if (is_spherecast_grounded)
             {
                 if (spherecast_hit_info.collider.gameObject
                     .GetComponent<MapAttributeGroundType>() == null)
@@ -620,7 +642,7 @@ public class PlayerMovementController : MonoBehaviour
 
         // camera movement relative to slope.
 
-        var slope_relative_movement = Vector3.ProjectOnPlane(camera_relative_movement, raycast_grounded_slope_normal);
+        var slope_relative_movement = Vector3.ProjectOnPlane(camera_relative_movement, spherecast_grounded_slope_normal);
 
         // acceleration
 

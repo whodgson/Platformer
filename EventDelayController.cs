@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using Assets.script;
 
-public class EventSetPlayerAnimatorController : MonoBehaviour, IEventController
+public class EventDelayController : MonoBehaviour, IEventController
 {
     private GameMasterController master;
     public GameObject next_event_source = null;
 
-    public string trigger = string.Empty;
+    private float start_time = 0.0f;
+    public float delay_seconds = 0.0f;
 
     void Start()
     {
@@ -22,14 +23,12 @@ public class EventSetPlayerAnimatorController : MonoBehaviour, IEventController
 
     public string GetEventType()
     {
-        return GameConstants.EVENT_TYPE_SET_PLAYER_ANIMATOR;
+        return GameConstants.EVENT_TYPE_DELAY;
     }
 
     public void StartEvent()
     {
-        var player = GameMasterController.GetPlayerObject();
-        var animator = player.GetComponentInChildren<Animator>();
-        animator.SetTrigger(trigger);
+        start_time = Time.time;
     }
 
     public void ProcessEvent()
@@ -39,6 +38,6 @@ public class EventSetPlayerAnimatorController : MonoBehaviour, IEventController
 
     public bool FinishEvent()
     {
-        return true;
+        return (Time.time - start_time) >= delay_seconds;
     }
 }
