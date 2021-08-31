@@ -163,5 +163,15 @@ namespace Assets.script
                 mc.rigid_body.velocity = Vector3.ClampMagnitude(mc.rigid_body.velocity, MAX_SPEED_GROUNDED);
             }
         }
+
+        public void UpdateStateAnimator(PlayerMovementController mc)
+        {
+            mc.facing_direction = new Vector3(mc.slide_direction.x, 0, mc.slide_direction.z);
+
+            mc.facing_direction_delta = Vector3.RotateTowards(mc.player_render.transform.forward, mc.facing_direction, PlayerConstants.ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
+
+            // Move our position a step closer to the target.
+            mc.player_render.transform.rotation = Quaternion.LookRotation(mc.facing_direction_delta);
+        }
     }
 }

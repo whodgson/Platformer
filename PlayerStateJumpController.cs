@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using UnityEngine;
 using Assets.script;
 using static Assets.script.PlayerEnums;
-using static Assets.script.PlayerEnums;
 using static Assets.script.PlayerConstants;
 
 namespace Assets.script
@@ -95,6 +94,10 @@ namespace Assets.script
             UpdateStateJump(mc);
             UpdateStateMovement(mc);
             UpdateStateSpeed(mc);
+        }
+
+        public void UpdateStateAnimator(PlayerMovementController mc)
+        {
         }
 
         public void UpdateStateJump(PlayerMovementController mc)

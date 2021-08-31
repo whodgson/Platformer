@@ -17,7 +17,8 @@ namespace Assets.script
             player_slide,
             player_dive,
             player_attack,
-            player_damage
+            player_damage,
+            player_water_dive
         }
     }
 }

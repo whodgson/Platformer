@@ -19,6 +19,7 @@ namespace Assets.script
 
         public const string MAIN_COLLIDER_GAME_OBJECT_NAME = "main_collider";
         public const string PLAYER_RENDER_GAME_OBJECT_NAME = "player_render";
+        public const string PLAYER_DIRECTION_GAME_OBJECT_NAME = "player_direction";
 
         // physical constants.
 
@@ -56,6 +57,7 @@ namespace Assets.script
         public const float STEP_MAX_VELOCITY = 1f;
 
         public const float MOVEMENT_SPHERECAST_DISTANCE = 0.1f;
+        public const float MOVEMENT_SPHERECAST_RADIUS = 0.1625f;
 
         // jump constants.
 

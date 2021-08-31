@@ -102,7 +102,7 @@ namespace Assets.script
             // do raycasts.
 
             is_movement_hit = Physics.SphereCast
-                (mc.transform.position, PlayerConstants.GROUNDED_SPHERECAST_RADIUS, slope_relative_movement, out movement_hit, PlayerConstants.MOVEMENT_SPHERECAST_DISTANCE);
+                (mc.transform.position, PlayerConstants.MOVEMENT_SPHERECAST_RADIUS, slope_relative_movement, out movement_hit, PlayerConstants.MOVEMENT_SPHERECAST_DISTANCE);
 
             Debug.DrawRay(mc.transform.position, slope_relative_movement, Color.red);
 
@@ -112,15 +112,17 @@ namespace Assets.script
             {
                 // initial step cast.
                 is_step_movement_hit = Physics.SphereCast
-                    (mc.transform.position + PlayerConstants.STEP_MOVEMENT_OFFSET, PlayerConstants.GROUNDED_SPHERECAST_RADIUS, slope_relative_movement, out step_movement_hit, PlayerConstants.MOVEMENT_SPHERECAST_DISTANCE);
+                    (mc.transform.position + PlayerConstants.STEP_MOVEMENT_OFFSET, PlayerConstants.MOVEMENT_SPHERECAST_RADIUS, slope_relative_movement, out step_movement_hit, PlayerConstants.MOVEMENT_SPHERECAST_DISTANCE);
 
                 // addition step check for ceilings.
-                if (Physics.CheckSphere(mc.transform.position + PlayerConstants.STEP_MOVEMENT_OFFSET, PlayerConstants.GROUNDED_SPHERECAST_RADIUS, GameConstants.LAYER_MASK_ALL_BUT_PLAYER))
+                if (Physics.CheckSphere(mc.transform.position + PlayerConstants.STEP_MOVEMENT_OFFSET, PlayerConstants.MOVEMENT_SPHERECAST_RADIUS, GameConstants.LAYER_MASK_ALL_BUT_PLAYER))
                     is_step_movement_hit = true;
 
                 if (!is_step_movement_hit)
                 {
                     // step obstace, move up and move directly ahead.
+
+                    Debug.Log("Doing a step. " + Time.time);
 
                     if (mc.rigid_body.velocity.y < PlayerConstants.STEP_MAX_VELOCITY)
                         mc.rigid_body.AddForce(Vector3.up, ForceMode.VelocityChange);
@@ -205,6 +207,19 @@ namespace Assets.script
                     }
                 }
             }
+        }
+
+        public void UpdateStateAnimator(PlayerMovementController mc)
+        {
+            // update player facing direction.
+
+            mc.facing_direction = Quaternion.Euler(0, mc.camera_object.transform.rotation.eulerAngles.y, 0) * mc.input_directional;
+
+            mc.facing_direction_delta = Vector3.RotateTowards(mc.player_render.transform.forward, mc.facing_direction, PlayerConstants.ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
+
+            // Move our position a step closer to the target.
+            mc.player_render.transform.rotation = Quaternion.LookRotation(mc.facing_direction_delta);
+            mc.player_direction.transform.rotation = Quaternion.LookRotation(mc.facing_direction_delta);
         }
     }
 }

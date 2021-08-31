@@ -29,5 +29,10 @@ namespace Assets.script
         {
             throw new NotImplementedException();
         }
+
+        public void UpdateStateAnimator(PlayerMovementController mc)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -24,6 +24,7 @@ public class PlayerMovementController : MonoBehaviour
     [System.NonSerialized] public PlayerStateWaterJumpController state_water_jump;
     [System.NonSerialized] public PlayerStateSlideController state_slide;
     [System.NonSerialized] public PlayerStateDiveController state_dive;
+    [System.NonSerialized] public PlayerStateWaterDiveController state_water_dive;
     [System.NonSerialized] public PlayerStateAttackController state_attack;
     [System.NonSerialized] public PlayerStateDamageController state_damage;
 
@@ -54,6 +55,11 @@ public class PlayerMovementController : MonoBehaviour
     [System.NonSerialized] public GameObject camera_object;
     [System.NonSerialized] public GameObject player_render;
     [System.NonSerialized] public Renderer player_renderer;
+    [System.NonSerialized] public GameObject player_direction;
+
+    // physical variables.
+
+    [System.NonSerialized] public bool is_under_gravity = true;
 
     // grounded variables.
 
@@ -152,6 +158,7 @@ public class PlayerMovementController : MonoBehaviour
         state_water_jump = new PlayerStateWaterJumpController();
         state_slide = new PlayerStateSlideController();
         state_dive = new PlayerStateDiveController();
+        state_water_dive = new PlayerStateWaterDiveController();
         state_attack = new PlayerStateAttackController();
         state_damage = new PlayerStateDamageController();
 
@@ -163,6 +170,7 @@ public class PlayerMovementController : MonoBehaviour
         player_state_controllers.Add(PlayerState.player_water_jump, state_water_jump);
         player_state_controllers.Add(PlayerState.player_slide, state_slide);
         player_state_controllers.Add(PlayerState.player_dive, state_dive);
+        player_state_controllers.Add(PlayerState.player_water_dive, state_water_dive);
         player_state_controllers.Add(PlayerState.player_attack, state_attack);
         player_state_controllers.Add(PlayerState.player_damage, state_damage);
 
@@ -175,6 +183,7 @@ public class PlayerMovementController : MonoBehaviour
         camera_object = GameObject.FindGameObjectWithTag(GameConstants.TAG_MAIN_CAMERA);
         player_render = GameObject.Find(PLAYER_RENDER_GAME_OBJECT_NAME);
         player_renderer = this.GetComponentInChildren<SkinnedMeshRenderer>();
+        player_direction = GameObject.Find(PLAYER_DIRECTION_GAME_OBJECT_NAME);
 
         // add listeners.
 
@@ -231,7 +240,10 @@ public class PlayerMovementController : MonoBehaviour
 
     private void Update()
     {
-        UpdatePlayerInput();
+        if (master.game_state == GameState.Game)
+        {
+            UpdatePlayerInput();
+        }
     }
 
     private void FixedUpdate()
@@ -262,7 +274,8 @@ public class PlayerMovementController : MonoBehaviour
 
             // update animator.
 
-            UpdateAnimator();
+            UpdateAnimatorVariables();
+            player_state_controllers[player_state].UpdateStateAnimator(this);
 
             // clear any raised inputs.
 
@@ -272,7 +285,7 @@ public class PlayerMovementController : MonoBehaviour
         {
             rigid_body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
             rigid_body.isKinematic = true;
-            UpdateAnimator();
+            UpdateAnimatorVariables();
         }
         else if (master.game_state == GameState.Cutscene)
         {
@@ -292,6 +305,7 @@ public class PlayerMovementController : MonoBehaviour
 
     private void UpdatePlayerInput()
     {
+
         // ignore all input for a short
         // time when entering game state.
 
@@ -427,6 +441,9 @@ public class PlayerMovementController : MonoBehaviour
     {
         // apply rising or falling gravity.
 
+        if (!is_under_gravity)
+            return;
+
         if (rigid_body.velocity.y > 0)
             rigid_body.AddForce(Physics.gravity, ForceMode.Acceleration);
         else
@@ -477,7 +494,7 @@ public class PlayerMovementController : MonoBehaviour
         player_sphere_collider.material.frictionCombine = PhysicMaterialCombine.Average;
     }
 
-    private void UpdateAnimator()
+    private void UpdateAnimatorVariables()
     {
         player_animator.SetInteger("anim_game_state", (int)master.game_state);
         player_animator.SetInteger("anim_player_state", (int)player_state);
@@ -487,41 +504,6 @@ public class PlayerMovementController : MonoBehaviour
         player_animator.SetFloat("anim_vertical_speed", rigid_body.velocity.y);
         player_animator.SetBool("anim_is_input_right", input_directional.x > 0.5);
         player_animator.SetBool("anim_is_input_left", input_directional.x < -0.5);
-
-        // update player facing direction if in valid state.
-
-        if (player_state == PlayerState.player_default
-            || player_state == PlayerState.player_water_default
-            || player_state == PlayerState.player_water_jump)
-        {
-
-            facing_direction = Quaternion.Euler(0, camera_object.transform.rotation.eulerAngles.y, 0) * input_directional;
-
-            facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward, facing_direction, PlayerConstants.ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
-
-            // Move our position a step closer to the target.
-            player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
-        }
-        else if (player_state == PlayerState.player_slide)
-        {
-            facing_direction = new Vector3(slide_direction.x, 0, slide_direction.z);
-
-            facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward, facing_direction, PlayerConstants.ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
-
-            // Move our position a step closer to the target.
-            player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
-        }
-        else if (player_state == PlayerState.player_dive)
-        {
-            facing_direction.x = dive_direction.x;
-            facing_direction.y = 0;
-            facing_direction.z = dive_direction.z;
-
-            facing_direction_delta = Vector3.RotateTowards(player_render.transform.forward, facing_direction, PlayerConstants.ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
-
-            // Move our position a step closer to the target.
-            player_render.transform.rotation = Quaternion.LookRotation(facing_direction_delta);
-        }
     }
 
     private void UpdateAnimatorGameOver()

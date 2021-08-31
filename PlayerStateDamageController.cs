@@ -71,5 +71,10 @@ namespace Assets.script
         {
             mc.state_jump.UpdateStateMovement(mc);
         }
+
+        public void UpdateStateAnimator(PlayerMovementController mc)
+        {
+     
+        }
     }
 }

@@ -56,6 +56,18 @@ namespace Assets.script
             UpdateStateSpeed(mc);
         }
 
+        public void UpdateStateAnimator(PlayerMovementController mc)
+        {
+            mc.facing_direction.x = mc.dive_direction.x;
+            mc.facing_direction.y = 0;
+            mc.facing_direction.z = mc.dive_direction.z;
+
+            mc.facing_direction_delta = Vector3.RotateTowards(mc.player_render.transform.forward, mc.facing_direction, PlayerConstants.ANIMATION_TURNING_SPEED_MULTIPLIER, 0.0f);
+
+            // Move our position a step closer to the target.
+            mc.player_render.transform.rotation = Quaternion.LookRotation(mc.facing_direction_delta);
+        }
+
         public void UpdateStateSpeed(PlayerMovementController mc)
         {
             Vector3 old_x_z = new Vector3(mc.rigid_body.velocity.x, 0, mc.rigid_body.velocity.z);

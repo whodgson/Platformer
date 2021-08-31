@@ -23,7 +23,15 @@ namespace Assets.script
         {
             update_count_water_default++;
 
-            // can swim if pressing jump 
+            // exit to water dive if pressing interact.
+
+            if (mc.is_raised_interact)
+            {
+                mc.ChangePlayerState(PlayerEnums.PlayerState.player_water_dive);
+                return;
+            }
+
+            // exit to water jump if pressing jump 
             // and grounded, or descending in water.
 
             if
@@ -52,6 +60,11 @@ namespace Assets.script
         {
             mc.state_default.UpdateStateMovement(mc);
             UpdateStateSpeed(mc);
+        }
+
+        public void UpdateStateAnimator(PlayerMovementController mc)
+        {
+            mc.state_default.UpdateStateAnimator(mc);
         }
 
         public void UpdateStateSpeed(PlayerMovementController mc)
